@@ -35,11 +35,20 @@ public final class ClipboardAssistantApp {
         statusItemController.install()
         clipboardMonitor.start()
 
-        return hotKeyManager.register(shortcut: shortcut) { [weak self] in
+        let result = hotKeyManager.register(shortcut: shortcut) { [weak self] in
             Task { @MainActor in
                 self?.toggleOverlay()
             }
         }
+
+        switch result {
+        case .success:
+            statusItemController.clearHotKeyRegistrationNotice()
+        case let .failure(error):
+            statusItemController.showHotKeyRegistrationFailure(error, shortcut: shortcut)
+        }
+
+        return result
     }
 
     public func stop() {

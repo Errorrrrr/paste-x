@@ -25,6 +25,36 @@ case "$SIGNING_MODE" in
         ;;
 esac
 
+identity="${CODESIGN_IDENTITY:-}"
+notary_profile="${NOTARY_KEYCHAIN_PROFILE:-${NOTARY_PROFILE:-}}"
+
+if [[ "$SIGNING_MODE" == "release" ]]; then
+    if [[ -z "$identity" || "$identity" == "-" ]]; then
+        echo "Release builds require CODESIGN_IDENTITY to be a Developer ID Application identity." >&2
+        exit 1
+    fi
+    if [[ "$identity" != Developer\ ID\ Application:* ]]; then
+        echo "Release builds require a Developer ID Application identity, got: $identity" >&2
+        exit 1
+    fi
+    if [[ -z "$notary_profile" ]]; then
+        echo "Release builds require NOTARY_KEYCHAIN_PROFILE for notarization." >&2
+        exit 1
+    fi
+    if ! command -v codesign >/dev/null 2>&1; then
+        echo "Release builds require codesign." >&2
+        exit 1
+    fi
+    if ! command -v xcrun >/dev/null 2>&1; then
+        echo "Release builds require xcrun notarytool and stapler for notarization." >&2
+        exit 1
+    fi
+    if ! command -v ditto >/dev/null 2>&1; then
+        echo "Release builds require ditto to create the notarization zip." >&2
+        exit 1
+    fi
+fi
+
 cd "$ROOT_DIR"
 
 if command -v plutil >/dev/null 2>&1; then
@@ -59,11 +89,7 @@ if [[ "${SKIP_CODESIGN:-0}" == "1" ]]; then
     echo "Skipping codesign; generated package is QA-only and not for distribution." >&2
 elif command -v codesign >/dev/null 2>&1; then
     if [[ "$SIGNING_MODE" == "release" ]]; then
-        identity="${CODESIGN_IDENTITY:-}"
-        if [[ -z "$identity" || "$identity" == "-" ]]; then
-            echo "Release builds require CODESIGN_IDENTITY to be a Developer ID Application identity." >&2
-            exit 1
-        fi
+        identity="$identity"
     else
         identity="${CODESIGN_IDENTITY:--}"
     fi
@@ -82,8 +108,21 @@ else
     echo "codesign not found; generated package is QA-only and not for distribution." >&2
 fi
 
+create_zip() {
+    if command -v ditto >/dev/null 2>&1; then
+        ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$ZIP_PATH"
+    fi
+}
+
 if command -v ditto >/dev/null 2>&1; then
-    ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$ZIP_PATH"
+    create_zip
+fi
+
+if [[ "$SIGNING_MODE" == "release" ]]; then
+    echo "Submitting release package for notarization with profile: $notary_profile"
+    xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$notary_profile" --wait
+    xcrun stapler staple "$APP_BUNDLE"
+    create_zip
 fi
 
 echo "App bundle: $APP_BUNDLE"

@@ -28,6 +28,15 @@ import PasteCore
     #expect(result.failure == .conflict)
 }
 
+@Test func hotKeyConflictNoticeExposesVisibleFallbackCopy() {
+    let notice = HotKeyRegistrationNotice.failure(error: .conflict, shortcut: .defaultToggleOverlay)
+
+    #expect(notice.menuTitle == "Shortcut unavailable: Cmd+Option+V is already used by another app")
+    #expect(notice.fallbackTitle == "Show Clipboard History (menu fallback)")
+    #expect(notice.toolTip.contains("Shortcut unavailable: Cmd+Option+V is already used by another app"))
+    #expect(notice.toolTip.contains("Use the menu bar icon or menu fallback"))
+}
+
 @Test func hotKeyManagerUnregistersExistingShortcutBeforeReplacingIt() {
     let backend = FakeHotKeyBackend()
     let manager = HotKeyManager(backend: backend)

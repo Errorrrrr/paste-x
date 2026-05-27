@@ -54,11 +54,11 @@ private extension HotKeyError {
     var startupDescription: String {
         switch self {
         case .conflict:
-            return "Cmd+Option+V is already registered by another app. The menu bar item remains available."
+            return "Cmd+Option+V is already registered by another app. The status item shows the conflict and the menu fallback remains available."
         case .unsupported:
-            return "The default shortcut is unsupported. The menu bar item remains available."
+            return "The default shortcut is unsupported. The status item shows the failure and the menu fallback remains available."
         case let .systemFailure(message):
-            return "\(message). The menu bar item remains available."
+            return "\(message). The status item shows the failure and the menu fallback remains available."
         }
     }
 }

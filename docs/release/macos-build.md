@@ -24,17 +24,14 @@ Useful overrides:
 ```bash
 ARCH=arm64 CONFIGURATION=release ./scripts/build-macos.sh
 SIGNING_MODE=qa CODESIGN_IDENTITY="Apple Development: Example Team (TEAMID)" ./scripts/build-macos.sh
-SIGNING_MODE=release CODESIGN_IDENTITY="Developer ID Application: Example Team (TEAMID)" ./scripts/build-macos.sh
+SIGNING_MODE=release CODESIGN_IDENTITY="Developer ID Application: Example Team (TEAMID)" NOTARY_KEYCHAIN_PROFILE="paste-notary" ./scripts/build-macos.sh
 SKIP_CODESIGN=1 ./scripts/build-macos.sh
 ```
 
-`SIGNING_MODE=release` fails unless `CODESIGN_IDENTITY` is set to a non-ad-hoc Developer ID Application identity. For Developer ID distribution, submit the generated release zip with your configured notarytool profile and staple the app before external distribution:
+`SIGNING_MODE=release` fails unless `CODESIGN_IDENTITY` is set to a Developer ID Application identity and `NOTARY_KEYCHAIN_PROFILE` is set. Release mode signs with hardened runtime, submits the zip with `notarytool`, staples the app, and re-zips the stapled bundle. If either signing or notarization credentials are unavailable, use the default QA mode and hand off only the `*-qa-only.zip` artifact.
 
 ```bash
-SIGNING_MODE=release CODESIGN_IDENTITY="Developer ID Application: Example Team (TEAMID)" ./scripts/build-macos.sh
-xcrun notarytool submit dist/Paste-macos-arm64.zip --keychain-profile "<profile>" --wait
-xcrun stapler staple dist/Paste.app
-ditto -c -k --sequesterRsrc --keepParent dist/Paste.app dist/Paste-macos-arm64.zip
+SIGNING_MODE=release CODESIGN_IDENTITY="Developer ID Application: Example Team (TEAMID)" NOTARY_KEYCHAIN_PROFILE="paste-notary" ./scripts/build-macos.sh
 ```
 
 ## Runtime Shape
@@ -43,7 +40,7 @@ ditto -c -k --sequesterRsrc --keepParent dist/Paste.app dist/Paste-macos-arm64.z
 - The app runs as a menu bar item using the clipboard icon.
 - Left-click the menu bar item to toggle the bottom clipboard overlay.
 - Right-click or Control-click the menu bar item to open a menu with `Show Clipboard History` and `Quit Paste`.
-- The default global shortcut is `Cmd+Option+V`. If registration fails because of a conflict, the app keeps running and the menu bar item remains usable.
+- The default global shortcut is `Cmd+Option+V`. If registration fails because of a conflict, the app keeps running, the status item tooltip names the shortcut failure, and the right-click menu exposes `Show Clipboard History (menu fallback)` as the visible backup entry.
 
 ## Permissions
 
@@ -65,3 +62,4 @@ Manual settings path: System Settings -> Privacy & Security -> Accessibility -> 
 4. Use Space, Return, and double-click to paste into TextEdit or another text input.
 5. In a clean user profile, verify the first paste attempt triggers the Accessibility path, and denial falls back to copy-only with a visible overlay message instead of silently closing.
 6. Right-click the menu bar icon, choose `Quit Paste`, reopen the app, and verify the menu bar item and hotkey register again.
+7. With another app already using `Cmd+Option+V`, launch Paste and verify the status item tooltip/menu show the shortcut conflict and `Show Clipboard History (menu fallback)` still opens the overlay.
