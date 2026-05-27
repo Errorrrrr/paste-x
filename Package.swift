@@ -10,6 +10,10 @@ let package = Package(
         .library(
             name: "PasteCore",
             targets: ["PasteCore"]
+        ),
+        .library(
+            name: "PasteOverlay",
+            targets: ["PasteOverlay"]
         )
     ],
     targets: [
@@ -17,10 +21,20 @@ let package = Package(
             name: "PasteCore",
             path: "Sources/PasteCore"
         ),
+        .target(
+            name: "PasteOverlay",
+            dependencies: ["PasteCore"],
+            path: "Sources/PasteOverlay"
+        ),
         .testTarget(
             name: "PasteCoreTests",
             dependencies: ["PasteCore"],
             path: "Tests/PasteCoreTests"
+        ),
+        .testTarget(
+            name: "PasteOverlayTests",
+            dependencies: ["PasteCore", "PasteOverlay"],
+            path: "Tests/PasteOverlayTests"
         )
     ]
 )
