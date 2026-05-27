@@ -19,7 +19,8 @@ public final class ClipboardAssistantDependencyContainer {
         clipboardSource: ClipboardPayloadSource = SystemClipboardPayloadSource(),
         classifier: ClipboardClassifying = ClipboardClassifier(),
         pasteCoordinator: PasteCoordinating = PasteCoordinator(),
-        permissionPresenter: PermissionPresenting? = AccessibilityPermissionPresenter()
+        permissionPresenter: PermissionPresenting? = AccessibilityPermissionPresenter(),
+        quitHandler: (() -> Void)? = nil
     ) {
         let historyStore = ClipboardHistoryStore(capacity: historyCapacity)
         let clipboardMonitor = ClipboardMonitor(
@@ -37,9 +38,12 @@ public final class ClipboardAssistantDependencyContainer {
             }
         )
         let toggleProxy = ClipboardAssistantToggleProxy()
-        let statusItemController = StatusItemController {
-            toggleProxy.toggleOverlay()
-        }
+        let statusItemController = StatusItemController(
+            toggleHandler: {
+                toggleProxy.toggleOverlay()
+            },
+            quitHandler: quitHandler
+        )
         let app = ClipboardAssistantApp(
             hotKeyManager: hotKeyManager,
             clipboardMonitor: clipboardMonitor,

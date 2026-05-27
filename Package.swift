@@ -22,6 +22,10 @@ let package = Package(
         .library(
             name: "PasteOverlay",
             targets: ["PasteOverlay"]
+        ),
+        .executable(
+            name: "Paste",
+            targets: ["PasteApp"]
         )
     ],
     targets: [
@@ -43,6 +47,11 @@ let package = Package(
             name: "PasteIntegration",
             dependencies: ["PasteCore", "PasteMacSystem", "PasteOverlay"],
             path: "Sources/PasteIntegration"
+        ),
+        .executableTarget(
+            name: "PasteApp",
+            dependencies: ["PasteIntegration"],
+            path: "Sources/PasteApp"
         ),
         .testTarget(
             name: "PasteCoreTests",
