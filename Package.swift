@@ -12,6 +12,14 @@ let package = Package(
             targets: ["PasteCore"]
         ),
         .library(
+            name: "PasteMacSystem",
+            targets: ["PasteMacSystem"]
+        ),
+        .library(
+            name: "PasteIntegration",
+            targets: ["PasteIntegration"]
+        ),
+        .library(
             name: "PasteOverlay",
             targets: ["PasteOverlay"]
         )
@@ -22,9 +30,19 @@ let package = Package(
             path: "Sources/PasteCore"
         ),
         .target(
+            name: "PasteMacSystem",
+            dependencies: ["PasteCore"],
+            path: "Sources/PasteMacSystem"
+        ),
+        .target(
             name: "PasteOverlay",
             dependencies: ["PasteCore"],
             path: "Sources/PasteOverlay"
+        ),
+        .target(
+            name: "PasteIntegration",
+            dependencies: ["PasteCore", "PasteMacSystem", "PasteOverlay"],
+            path: "Sources/PasteIntegration"
         ),
         .testTarget(
             name: "PasteCoreTests",
@@ -32,9 +50,19 @@ let package = Package(
             path: "Tests/PasteCoreTests"
         ),
         .testTarget(
+            name: "PasteMacSystemTests",
+            dependencies: ["PasteCore", "PasteMacSystem"],
+            path: "Tests/PasteMacSystemTests"
+        ),
+        .testTarget(
             name: "PasteOverlayTests",
             dependencies: ["PasteCore", "PasteOverlay"],
             path: "Tests/PasteOverlayTests"
+        ),
+        .testTarget(
+            name: "PasteIntegrationTests",
+            dependencies: ["PasteCore", "PasteIntegration", "PasteOverlay"],
+            path: "Tests/PasteIntegrationTests"
         )
     ]
 )
