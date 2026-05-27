@@ -11,9 +11,11 @@ This repo ships a SwiftPM executable target named `Paste` and a local macOS app 
 Default output:
 
 - `dist/Paste.app`
-- `dist/Paste-macos-arm64.zip`
+- `dist/Paste-macos-arm64-qa-only.zip`
 
-The script builds the `Paste` executable in release mode for `arm64`, copies `Resources/Info.plist` into the app bundle, ad-hoc signs the app by default, verifies the signature, and zips the bundle with `ditto`.
+The script builds the `Paste` executable in release mode for `arm64`, copies `Resources/Info.plist` into the app bundle, signs the app, verifies the signature, and zips the bundle with `ditto`.
+
+By default `SIGNING_MODE=qa`, which uses ad-hoc signing unless `CODESIGN_IDENTITY` is explicitly provided. QA mode always writes a `*-qa-only.zip` artifact so it is not confused with a distributable macOS release. That package is for local QA and internal handoff only; it is not a Gatekeeper/notarized external release artifact.
 
 `Resources/Paste.entitlements` is intentionally empty for MVP non-sandboxed distribution. Clipboard reads and synthesized paste events are guarded by macOS TCC Accessibility consent, not by a sandbox entitlement. If the app later targets the Mac App Store, sandbox behavior needs a separate validation pass because CGEvent-based auto-paste may be constrained.
 
@@ -21,15 +23,18 @@ Useful overrides:
 
 ```bash
 ARCH=arm64 CONFIGURATION=release ./scripts/build-macos.sh
-CODESIGN_IDENTITY="Developer ID Application: Example Team (TEAMID)" ./scripts/build-macos.sh
+SIGNING_MODE=qa CODESIGN_IDENTITY="Apple Development: Example Team (TEAMID)" ./scripts/build-macos.sh
+SIGNING_MODE=release CODESIGN_IDENTITY="Developer ID Application: Example Team (TEAMID)" ./scripts/build-macos.sh
 SKIP_CODESIGN=1 ./scripts/build-macos.sh
 ```
 
-For Developer ID distribution, submit the generated zip with your configured notarytool profile:
+`SIGNING_MODE=release` fails unless `CODESIGN_IDENTITY` is set to a non-ad-hoc Developer ID Application identity. For Developer ID distribution, submit the generated release zip with your configured notarytool profile and staple the app before external distribution:
 
 ```bash
+SIGNING_MODE=release CODESIGN_IDENTITY="Developer ID Application: Example Team (TEAMID)" ./scripts/build-macos.sh
 xcrun notarytool submit dist/Paste-macos-arm64.zip --keychain-profile "<profile>" --wait
 xcrun stapler staple dist/Paste.app
+ditto -c -k --sequesterRsrc --keepParent dist/Paste.app dist/Paste-macos-arm64.zip
 ```
 
 ## Runtime Shape
@@ -58,5 +63,5 @@ Manual settings path: System Settings -> Privacy & Security -> Accessibility -> 
 2. Copy text, a URL, an image, and a file; verify the overlay shows recent items newest-first with type markers.
 3. Toggle the overlay by menu bar click and by `Cmd+Option+V`.
 4. Use Space, Return, and double-click to paste into TextEdit or another text input.
-5. In a clean user profile, verify the first paste attempt triggers the Accessibility path, and denial falls back to copy-only without crashing.
+5. In a clean user profile, verify the first paste attempt triggers the Accessibility path, and denial falls back to copy-only with a visible overlay message instead of silently closing.
 6. Right-click the menu bar icon, choose `Quit Paste`, reopen the app, and verify the menu bar item and hotkey register again.

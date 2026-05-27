@@ -50,6 +50,15 @@ public final class ClipboardAssistantApp {
     }
 
     public func toggleOverlay() {
-        overlayPresenter.toggle(items: historyStore.items, target: focusTracker.currentTarget)
+        let target = refreshedPasteTarget()
+        overlayPresenter.toggle(items: historyStore.items, target: target)
+    }
+
+    private func refreshedPasteTarget() -> PasteTarget? {
+        if let focusTracker = focusTracker as? FocusTargetRefreshing {
+            return focusTracker.refreshCurrentTarget(at: Date())
+        }
+
+        return focusTracker.currentTarget
     }
 }

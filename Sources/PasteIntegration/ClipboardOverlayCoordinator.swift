@@ -9,6 +9,7 @@ public protocol ClipboardOverlayWindowControlling: AnyObject {
 
     func show(items: [ClipboardItem], on screen: NSScreen?)
     func hideOverlay()
+    func showPasteFeedback(_ message: String, hideAfter delay: TimeInterval)
 }
 
 extension OverlayWindowController: ClipboardOverlayWindowControlling {}
@@ -98,7 +99,9 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
             markSelfWrite(request.item)
         }
 
-        if result.shouldHideOverlayAfterPaste {
+        if let feedbackMessage = result.copyOnlyFeedbackMessage {
+            windowController.showPasteFeedback(feedbackMessage, hideAfter: Constants.copyOnlyFeedbackDuration)
+        } else if result.shouldHideOverlayAfterPaste {
             windowController.hideOverlay()
         }
 
@@ -124,6 +127,15 @@ private final class OverlayPasteRequestRelay {
 }
 
 private extension PasteResult {
+    var copyOnlyFeedbackMessage: String? {
+        switch self {
+        case let .copiedOnly(reason):
+            return reason.feedbackMessage
+        case .pasted, .failed:
+            return nil
+        }
+    }
+
     var wrotePasteboard: Bool {
         switch self {
         case .pasted, .copiedOnly:
@@ -141,4 +153,23 @@ private extension PasteResult {
             return false
         }
     }
+}
+
+private extension PasteFallbackReason {
+    var feedbackMessage: String {
+        switch self {
+        case .accessibilityNotTrusted:
+            return "Copied to clipboard. Enable Accessibility to paste automatically."
+        case .targetUnavailable:
+            return "Copied to clipboard. Reopen Paste from the target app to paste automatically."
+        case .activationFailed:
+            return "Copied to clipboard. Could not return to the target app."
+        case .eventPostFailed:
+            return "Copied to clipboard. Could not send the paste command."
+        }
+    }
+}
+
+private enum Constants {
+    static let copyOnlyFeedbackDuration: TimeInterval = 1.4
 }

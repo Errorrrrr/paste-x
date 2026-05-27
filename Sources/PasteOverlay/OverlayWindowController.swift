@@ -8,6 +8,7 @@ public final class OverlayWindowController: NSObject {
     private let onPasteRequested: (OverlayPasteRequest) -> Void
     private let onDismiss: () -> Void
     private var panel: OverlayPanel?
+    private var feedbackHideTask: Task<Void, Never>?
 
     public init(
         store: OverlaySelectionStore = OverlaySelectionStore(),
@@ -33,8 +34,24 @@ public final class OverlayWindowController: NSObject {
     }
 
     public func hideOverlay() {
+        feedbackHideTask?.cancel()
+        feedbackHideTask = nil
+        store.clearFeedback()
         panel?.orderOut(nil)
         onDismiss()
+    }
+
+    public func showPasteFeedback(_ message: String, hideAfter delay: TimeInterval = 1.4) {
+        store.showFeedback(message)
+        feedbackHideTask?.cancel()
+
+        let nanoseconds = UInt64(max(0, delay) * 1_000_000_000)
+        feedbackHideTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: nanoseconds)
+            await MainActor.run {
+                self?.hideOverlay()
+            }
+        }
     }
 
     private func toggleOnMain(items: [ClipboardItem]) {

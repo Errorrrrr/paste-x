@@ -49,6 +49,22 @@ import Testing
     #expect(request?.trigger == .returnKey)
 }
 
+@MainActor
+@Test func feedbackMessageCanBeShownClearedAndResetsWhenItemsRefresh() throws {
+    let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 350))
+    let store = OverlaySelectionStore(items: Array(items.prefix(2)))
+
+    store.showFeedback("Copied to clipboard")
+    #expect(store.feedbackMessage == "Copied to clipboard")
+
+    store.clearFeedback()
+    #expect(store.feedbackMessage == nil)
+
+    store.showFeedback("Copied again")
+    store.replaceItems([items[2]])
+    #expect(store.feedbackMessage == nil)
+}
+
 @Test func mockDataCoversEveryRenderableKindWithPayloads() throws {
     let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 400))
     let kinds = Set(items.map(\.kind))

@@ -12,23 +12,43 @@ public struct RunningApplicationInfo: Equatable, Sendable {
     }
 }
 
-public final class FocusTracker: NSObject, FocusTracking {
+public protocol FocusTargetRefreshing: FocusTracking {
+    @discardableResult
+    func refreshCurrentTarget(at date: Date) -> PasteTarget?
+}
+
+public final class FocusTracker: NSObject, FocusTracking, FocusTargetRefreshing {
     public private(set) var currentTarget: PasteTarget?
 
     private let ownBundleIdentifier: String?
     private let ownProcessIdentifier: Int32
+    private let frontmostApplicationProvider: () -> RunningApplicationInfo?
     private var isObserving = false
+
     public init(
         ownBundleIdentifier: String? = Bundle.main.bundleIdentifier,
-        ownProcessIdentifier: Int32 = ProcessInfo.processInfo.processIdentifier
+        ownProcessIdentifier: Int32 = ProcessInfo.processInfo.processIdentifier,
+        frontmostApplicationProvider: @escaping () -> RunningApplicationInfo? = {
+            guard let application = NSWorkspace.shared.frontmostApplication else {
+                return nil
+            }
+
+            return RunningApplicationInfo(
+                bundleIdentifier: application.bundleIdentifier,
+                processIdentifier: application.processIdentifier
+            )
+        }
     ) {
         self.ownBundleIdentifier = ownBundleIdentifier
         self.ownProcessIdentifier = ownProcessIdentifier
+        self.frontmostApplicationProvider = frontmostApplicationProvider
         super.init()
     }
 
     public func start() {
         guard !isObserving else { return }
+
+        refreshCurrentTarget()
 
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
@@ -42,6 +62,16 @@ public final class FocusTracker: NSObject, FocusTracking {
     public func stop() {
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         isObserving = false
+    }
+
+    @discardableResult
+    public func refreshCurrentTarget(at date: Date = Date()) -> PasteTarget? {
+        guard let application = frontmostApplicationProvider() else {
+            return currentTarget
+        }
+
+        recordActivatedApplication(application, at: date)
+        return currentTarget
     }
 
     public func recordActivatedApplication(_ application: RunningApplicationInfo, at date: Date = Date()) {

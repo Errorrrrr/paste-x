@@ -75,6 +75,49 @@ import PasteCore
     ))
 }
 
+@Test func focusTrackerRefreshesTargetFromFrontmostApplicationWithoutActivationEvent() {
+    let tracker = FocusTracker(
+        ownBundleIdentifier: "com.example.Paste",
+        ownProcessIdentifier: 7,
+        frontmostApplicationProvider: {
+            RunningApplicationInfo(
+                bundleIdentifier: "com.apple.TextEdit",
+                processIdentifier: 42
+            )
+        }
+    )
+
+    let target = tracker.refreshCurrentTarget(at: Date(timeIntervalSince1970: 3))
+
+    #expect(target == PasteTarget(
+        bundleIdentifier: "com.apple.TextEdit",
+        processIdentifier: 42,
+        capturedAt: Date(timeIntervalSince1970: 3)
+    ))
+    #expect(tracker.currentTarget == target)
+}
+
+@MainActor
+@Test func clipboardAssistantRefreshesTargetBeforeShowingOverlay() {
+    let item = makePasteItem()
+    let target = makeTarget()
+    let overlay = FakeOverlayPresenter()
+    let focusTracker = FakeRefreshableFocusTracker(target: target)
+    let app = ClipboardAssistantApp(
+        hotKeyManager: FakeHotKeyManager(),
+        clipboardMonitor: FakeClipboardMonitor(),
+        historyStore: FakeClipboardHistory(items: [item]),
+        overlayPresenter: overlay,
+        focusTracker: focusTracker,
+        statusItemController: StatusItemController(toggleHandler: {})
+    )
+
+    app.toggleOverlay()
+
+    #expect(focusTracker.refreshCount == 1)
+    #expect(overlay.toggles == [OverlayToggle(items: [item], target: target)])
+}
+
 private final class FakePasteServices: PasteCoordinatorServices {
     var writeResult = true
     var permissionTrusted = true
@@ -102,6 +145,60 @@ private final class FakePasteServices: PasteCoordinatorServices {
         postedPasteCommand = true
         return postResult
     }
+}
+
+private struct OverlayToggle: Equatable {
+    let items: [ClipboardItem]
+    let target: PasteTarget?
+}
+
+private final class FakeOverlayPresenter: OverlayPresenting {
+    private(set) var toggles: [OverlayToggle] = []
+
+    func toggle(items: [ClipboardItem], target: PasteTarget?) {
+        toggles.append(OverlayToggle(items: items, target: target))
+    }
+
+    func hide() {}
+}
+
+private final class FakeRefreshableFocusTracker: FocusTargetRefreshing {
+    private let target: PasteTarget
+    private(set) var refreshCount = 0
+    var currentTarget: PasteTarget? { nil }
+
+    init(target: PasteTarget) {
+        self.target = target
+    }
+
+    func refreshCurrentTarget(at date: Date) -> PasteTarget? {
+        refreshCount += 1
+        return target
+    }
+}
+
+private final class FakeClipboardHistory: ClipboardHistoryProviding {
+    let items: [ClipboardItem]
+
+    init(items: [ClipboardItem]) {
+        self.items = items
+    }
+
+    func insert(_ item: ClipboardItem) {}
+    func clear() {}
+}
+
+private final class FakeClipboardMonitor: ClipboardMonitoring {
+    func start() {}
+    func stop() {}
+}
+
+private final class FakeHotKeyManager: HotKeyManaging {
+    func register(shortcut: HotKeyShortcut, handler: @escaping @Sendable () -> Void) -> Result<Void, HotKeyError> {
+        .success(())
+    }
+
+    func unregister() {}
 }
 
 private func makePasteItem(payloads: [ClipboardPayload]? = nil) -> ClipboardItem {

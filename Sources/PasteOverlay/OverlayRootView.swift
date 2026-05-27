@@ -14,7 +14,7 @@ public struct OverlayRootView: View {
     }
 
     public var body: some View {
-        ZStack {
+        ZStack(alignment: .bottomTrailing) {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(.regularMaterial)
                 .overlay(
@@ -27,9 +27,17 @@ public struct OverlayRootView: View {
             } else {
                 itemStrip
             }
+
+            if let feedbackMessage = store.feedbackMessage {
+                feedbackBanner(feedbackMessage)
+                    .padding(.trailing, 18)
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
+            }
         }
         .frame(minWidth: 420, idealHeight: 96, maxHeight: 96)
         .padding(10)
+        .animation(.easeOut(duration: 0.14), value: store.feedbackMessage)
     }
 
     private var emptyState: some View {
@@ -78,6 +86,28 @@ public struct OverlayRootView: View {
                 }
             }
         }
+    }
+
+    private func feedbackBanner(_ message: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 12, weight: .semibold))
+
+            Text(message)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+        }
+        .foregroundStyle(Color(nsColor: .controlAccentColor))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .frame(maxWidth: 360, alignment: .leading)
+        .background(
+            Capsule(style: .continuous)
+                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.96))
+                .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
+        )
+        .accessibilityLabel(message)
     }
 
     private func requestPaste(trigger: OverlayPasteTrigger) {

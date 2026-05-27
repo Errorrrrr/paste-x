@@ -37,7 +37,7 @@ import Testing
 }
 
 @MainActor
-@Test func overlayCoordinatorHidesCopiedOnlyFallbackButKeepsFailedPasteVisible() async {
+@Test func overlayCoordinatorShowsCopiedOnlyFallbackButKeepsFailedPasteVisible() async {
     let item = makeItem(summary: "hello", signature: "text:hello")
     let target = makeTarget()
     let copiedOnlyWindow = FakeOverlayWindowController()
@@ -53,8 +53,14 @@ import Testing
     let copiedOnlyResult = await copiedOnlyCoordinator.paste(OverlayPasteRequest(item: item, trigger: .spaceKey))
 
     #expect(copiedOnlyResult == .copiedOnly(reason: .accessibilityNotTrusted))
-    #expect(copiedOnlyWindow.hideCount == 1)
-    #expect(copiedOnlyWindow.isVisible == false)
+    #expect(copiedOnlyWindow.hideCount == 0)
+    #expect(copiedOnlyWindow.isVisible == true)
+    #expect(copiedOnlyWindow.feedbacks == [
+        PasteFeedback(
+            message: "Copied to clipboard. Enable Accessibility to paste automatically.",
+            hideAfter: 1.4
+        )
+    ])
 
     let failedWindow = FakeOverlayWindowController()
     var failedMarkedSelfWrites: [String] = []
@@ -105,12 +111,18 @@ private struct PasteRequest: Equatable {
     let target: PasteTarget?
 }
 
+private struct PasteFeedback: Equatable {
+    let message: String
+    let hideAfter: TimeInterval
+}
+
 @MainActor
 private final class FakeOverlayWindowController: ClipboardOverlayWindowControlling {
     var isVisible = false
     private(set) var showCount = 0
     private(set) var hideCount = 0
     private(set) var shownItems: [ClipboardItem] = []
+    private(set) var feedbacks: [PasteFeedback] = []
 
     func show(items: [ClipboardItem], on screen: NSScreen?) {
         isVisible = true
@@ -121,6 +133,10 @@ private final class FakeOverlayWindowController: ClipboardOverlayWindowControlli
     func hideOverlay() {
         isVisible = false
         hideCount += 1
+    }
+
+    func showPasteFeedback(_ message: String, hideAfter delay: TimeInterval) {
+        feedbacks.append(PasteFeedback(message: message, hideAfter: delay))
     }
 }
 

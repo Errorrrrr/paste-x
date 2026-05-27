@@ -22,6 +22,7 @@ public struct OverlayPasteRequest: Equatable, Sendable {
 public final class OverlaySelectionStore: ObservableObject {
     @Published public private(set) var items: [ClipboardItem]
     @Published public private(set) var selectedItemID: ClipboardItem.ID?
+    @Published public private(set) var feedbackMessage: String?
 
     public var selectedItem: ClipboardItem? {
         guard let selectedItemID else {
@@ -38,6 +39,7 @@ public final class OverlaySelectionStore: ObservableObject {
 
     public func replaceItems(_ newItems: [ClipboardItem]) {
         let previousSelection = selectedItemID
+        feedbackMessage = nil
         items = newItems
 
         if let previousSelection, newItems.contains(where: { $0.id == previousSelection }) {
@@ -69,6 +71,14 @@ public final class OverlaySelectionStore: ObservableObject {
         }
 
         return OverlayPasteRequest(item: selectedItem, trigger: trigger)
+    }
+
+    public func showFeedback(_ message: String) {
+        feedbackMessage = message
+    }
+
+    public func clearFeedback() {
+        feedbackMessage = nil
     }
 
     private func moveSelection(by offset: Int) {
