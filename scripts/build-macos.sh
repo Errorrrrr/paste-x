@@ -27,8 +27,14 @@ esac
 
 identity="${CODESIGN_IDENTITY:-}"
 notary_profile="${NOTARY_KEYCHAIN_PROFILE:-${NOTARY_PROFILE:-}}"
+release_temp_dir=""
+release_succeeded=0
 
 if [[ "$SIGNING_MODE" == "release" ]]; then
+    if [[ "${SKIP_CODESIGN:-0}" == "1" ]]; then
+        echo "Release builds require Developer ID codesigning; unset SKIP_CODESIGN." >&2
+        exit 1
+    fi
     if [[ -z "$identity" || "$identity" == "-" ]]; then
         echo "Release builds require CODESIGN_IDENTITY to be a Developer ID Application identity." >&2
         exit 1
@@ -55,6 +61,19 @@ if [[ "$SIGNING_MODE" == "release" ]]; then
     fi
 fi
 
+cleanup_release_artifacts() {
+    if [[ -n "$release_temp_dir" ]]; then
+        rm -rf "$release_temp_dir"
+    fi
+    if [[ "$SIGNING_MODE" == "release" && "$release_succeeded" != "1" ]]; then
+        rm -f "$ZIP_PATH"
+    fi
+}
+
+if [[ "$SIGNING_MODE" == "release" ]]; then
+    trap cleanup_release_artifacts EXIT
+fi
+
 cd "$ROOT_DIR"
 
 if command -v plutil >/dev/null 2>&1; then
@@ -73,7 +92,8 @@ if [[ ! -x "$EXECUTABLE" ]]; then
     exit 1
 fi
 
-rm -rf "$APP_BUNDLE" "$DIST_DIR/$APP_NAME-macos-$ARCH.zip" "$DIST_DIR/$APP_NAME-macos-$ARCH-qa-only.zip"
+mkdir -p "$DIST_DIR"
+rm -rf "$APP_BUNDLE" "$ZIP_PATH"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 cp "$INFO_PLIST" "$APP_BUNDLE/Contents/Info.plist"
 cp "$EXECUTABLE" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
@@ -82,10 +102,6 @@ chmod 755 "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 echo "Signing mode: $SIGNING_MODE"
 
 if [[ "${SKIP_CODESIGN:-0}" == "1" ]]; then
-    if [[ "$SIGNING_MODE" == "release" ]]; then
-        echo "Release builds require Developer ID codesigning; unset SKIP_CODESIGN." >&2
-        exit 1
-    fi
     echo "Skipping codesign; generated package is QA-only and not for distribution." >&2
 elif command -v codesign >/dev/null 2>&1; then
     if [[ "$SIGNING_MODE" == "release" ]]; then
@@ -109,20 +125,21 @@ else
 fi
 
 create_zip() {
-    if command -v ditto >/dev/null 2>&1; then
-        ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$ZIP_PATH"
-    fi
+    local output_path="$1"
+    ditto -c -k --sequesterRsrc --keepParent "$APP_BUNDLE" "$output_path"
 }
 
-if command -v ditto >/dev/null 2>&1; then
-    create_zip
-fi
-
 if [[ "$SIGNING_MODE" == "release" ]]; then
+    release_temp_dir="$(mktemp -d "$DIST_DIR/$APP_NAME-notary.XXXXXX")"
+    release_upload_zip="$release_temp_dir/$APP_NAME-macos-$ARCH-notary.zip"
+    create_zip "$release_upload_zip"
     echo "Submitting release package for notarization with profile: $notary_profile"
-    xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$notary_profile" --wait
+    xcrun notarytool submit "$release_upload_zip" --keychain-profile "$notary_profile" --wait
     xcrun stapler staple "$APP_BUNDLE"
-    create_zip
+    create_zip "$ZIP_PATH"
+    release_succeeded=1
+elif command -v ditto >/dev/null 2>&1; then
+    create_zip "$ZIP_PATH"
 fi
 
 echo "App bundle: $APP_BUNDLE"
