@@ -44,6 +44,11 @@ public protocol HotKeyManaging: AnyObject {
 public protocol OverlayPresenting: AnyObject {
     func toggle(items: [ClipboardItem], target: PasteTarget?)
     func hide()
+    func updateLanguage(_ language: AppLanguage)
+}
+
+public extension OverlayPresenting {
+    func updateLanguage(_ language: AppLanguage) {}
 }
 
 public protocol PasteCoordinating: AnyObject {
