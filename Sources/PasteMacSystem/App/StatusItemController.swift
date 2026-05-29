@@ -191,12 +191,7 @@ public final class StatusItemController: NSObject {
         let animationID = UUID()
         captureAnimationID = animationID
 
-        let accessibility = strings.statusAccessibility
-        button.image = statusImage(
-            systemSymbolName: StatusItemAnimation.captureSymbolName,
-            accessibilityDescription: accessibility
-        )
-        button.contentTintColor = .controlAccentColor
+        updateStatusButtonPresentation()
         button.wantsLayer = true
         button.layer?.removeAnimation(forKey: StatusItemAnimation.pulseKey)
         addClipboardCapturePulse(to: button)
@@ -456,7 +451,6 @@ private struct StatusItemStrings {
 
 private enum StatusItemAnimation {
     static let defaultSymbolName = "doc.on.clipboard"
-    static let captureSymbolName = "doc.on.clipboard.fill"
     static let pulseKey = "PasteXClipboardCapturePulse"
     static let pulseDuration: TimeInterval = 0.42
     static let resetDelay: TimeInterval = 0.5
