@@ -13,7 +13,7 @@ Default output:
 - `dist/PasteX.app`
 - `dist/PasteX-macos-arm64-qa-only.zip`
 
-The script builds the `PasteX` executable in release mode for `arm64`, copies `Resources/Info.plist` into the app bundle, signs the app, verifies the signature, and zips the bundle with `ditto`.
+The script builds the `PasteX` executable in release mode for `arm64`, copies `Resources/Info.plist` and `Resources/PasteXAppIcon.icns` into the app bundle, signs the app, verifies the signature, and zips the bundle with `ditto`.
 
 By default `SIGNING_MODE=qa`, which uses ad-hoc signing unless `CODESIGN_IDENTITY` is explicitly provided. QA mode always writes a `*-qa-only.zip` artifact so it is not confused with a distributable macOS release. That package is for local QA and internal handoff only; it is not a Gatekeeper/notarized external release artifact. The QA build also removes older `*-qa-only*.zip` files from `dist/` before writing the new package so the handoff directory keeps only the latest test package.
 
@@ -36,7 +36,7 @@ SIGNING_MODE=release CODESIGN_IDENTITY="Developer ID Application: Example Team (
 
 ## Runtime Shape
 
-- `LSUIElement` is enabled in `Resources/Info.plist`, so launch does not open a Dock icon or a main window.
+- `LSUIElement` is enabled in `Resources/Info.plist`, so launch does not open a Dock icon or a main window. The bundle still declares `PasteXAppIcon.icns` for Finder, application package, and Dock presentation if the activation policy changes.
 - The app runs as a menu bar item using the clipboard icon.
 - Left-click the menu bar item to toggle the bottom clipboard overlay.
 - Right-click or Control-click the menu bar item to open a menu with `Show Clipboard History` and `Quit PasteX`.
@@ -56,7 +56,7 @@ Manual settings path: System Settings -> Privacy & Security -> Accessibility -> 
 
 ## QA Smoke Check
 
-1. Open `dist/PasteX.app`; verify no main window or Dock icon appears and a clipboard menu bar icon is visible.
+1. Open `dist/PasteX.app`; verify no main window or Dock icon appears, the app bundle shows the PasteX app icon in Finder, and a clipboard menu bar icon is visible.
 2. Copy text, a URL, an image, and a file; verify the overlay shows recent items newest-first with type markers.
 3. Toggle the overlay by menu bar click and by `Cmd+Option+V`.
 4. Use Space, Return, and double-click to paste into TextEdit or another text input.

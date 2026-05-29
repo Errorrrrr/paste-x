@@ -10,6 +10,7 @@ SIGNING_MODE="${SIGNING_MODE:-qa}"
 DIST_DIR="${DIST_DIR:-$ROOT_DIR/dist}"
 INFO_PLIST="$ROOT_DIR/Resources/Info.plist"
 ENTITLEMENTS="$ROOT_DIR/Resources/Paste.entitlements"
+APP_ICON="$ROOT_DIR/Resources/PasteXAppIcon.icns"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 
 case "$SIGNING_MODE" in
@@ -79,6 +80,10 @@ cd "$ROOT_DIR"
 if command -v plutil >/dev/null 2>&1; then
     plutil -lint "$INFO_PLIST" "$ENTITLEMENTS" >/dev/null
 fi
+if [[ ! -f "$APP_ICON" ]]; then
+    echo "Expected app icon not found: $APP_ICON" >&2
+    exit 1
+fi
 
 build_flags=(-c "$CONFIGURATION" --product "$PRODUCT_NAME" --arch "$ARCH")
 bin_path_flags=(-c "$CONFIGURATION" --arch "$ARCH")
@@ -99,6 +104,7 @@ fi
 rm -rf "$APP_BUNDLE" "$ZIP_PATH" "$DIST_DIR/Paste.app"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 cp "$INFO_PLIST" "$APP_BUNDLE/Contents/Info.plist"
+cp "$APP_ICON" "$APP_BUNDLE/Contents/Resources/$(basename "$APP_ICON")"
 cp "$EXECUTABLE" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 chmod 755 "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
