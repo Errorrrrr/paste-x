@@ -11,6 +11,7 @@ public final class ClipboardMonitor: NSObject, ClipboardMonitoring {
     private let classifier: ClipboardClassifying
     private let historyStore: ClipboardHistoryProviding
     private let interval: TimeInterval
+    private let newItemHandler: (ClipboardItem) -> Void
     private var lastChangeCount: Int
     private var timer: Timer?
     private var pendingSelfWriteSignature: String?
@@ -19,12 +20,14 @@ public final class ClipboardMonitor: NSObject, ClipboardMonitoring {
         source: ClipboardPayloadSource,
         classifier: ClipboardClassifying,
         historyStore: ClipboardHistoryProviding,
-        interval: TimeInterval = 0.5
+        interval: TimeInterval = 0.5,
+        newItemHandler: @escaping (ClipboardItem) -> Void = { _ in }
     ) {
         self.source = source
         self.classifier = classifier
         self.historyStore = historyStore
         self.interval = interval
+        self.newItemHandler = newItemHandler
         self.lastChangeCount = source.currentChangeCount()
         super.init()
     }
@@ -32,13 +35,15 @@ public final class ClipboardMonitor: NSObject, ClipboardMonitoring {
     public convenience init(
         classifier: ClipboardClassifying,
         historyStore: ClipboardHistoryProviding,
-        interval: TimeInterval = 0.5
+        interval: TimeInterval = 0.5,
+        newItemHandler: @escaping (ClipboardItem) -> Void = { _ in }
     ) {
         self.init(
             source: SystemClipboardPayloadSource(),
             classifier: classifier,
             historyStore: historyStore,
-            interval: interval
+            interval: interval,
+            newItemHandler: newItemHandler
         )
     }
 
@@ -80,6 +85,7 @@ public final class ClipboardMonitor: NSObject, ClipboardMonitoring {
         }
 
         historyStore.insert(item)
+        newItemHandler(item)
     }
 
     @objc private func timerFired() {

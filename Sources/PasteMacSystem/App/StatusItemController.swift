@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import PasteCore
+import QuartzCore
 
 struct HotKeyRegistrationNotice: Equatable, Sendable {
     let menuTitle: String
@@ -149,6 +150,8 @@ public final class StatusItemController: NSObject {
     private var statusMenu: NSMenu?
     private(set) var hotKeyNotice: HotKeyRegistrationNotice?
     private var hotKeyFailure: (error: HotKeyError, shortcut: HotKeyShortcut)?
+    private var captureAnimationResetTimer: Timer?
+    private var captureAnimationID: UUID?
 
     public init(
         language: AppLanguage = .english,
@@ -176,8 +179,36 @@ public final class StatusItemController: NSObject {
 
     public func uninstall() {
         guard let statusItem else { return }
+        clearClipboardCaptureAnimation()
         NSStatusBar.system.removeStatusItem(statusItem)
         self.statusItem = nil
+    }
+
+    public func playClipboardCaptureAnimation() {
+        guard let button = statusItem?.button else { return }
+
+        captureAnimationResetTimer?.invalidate()
+        let animationID = UUID()
+        captureAnimationID = animationID
+
+        let accessibility = strings.statusAccessibility
+        button.image = statusImage(
+            systemSymbolName: StatusItemAnimation.captureSymbolName,
+            accessibilityDescription: accessibility
+        )
+        button.contentTintColor = .controlAccentColor
+        button.wantsLayer = true
+        button.layer?.removeAnimation(forKey: StatusItemAnimation.pulseKey)
+        addClipboardCapturePulse(to: button)
+
+        captureAnimationResetTimer = Timer.scheduledTimer(
+            withTimeInterval: StatusItemAnimation.resetDelay,
+            repeats: false
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.finishClipboardCaptureAnimation(animationID: animationID)
+            }
+        }
     }
 
     public func clearHotKeyRegistrationNotice() {
@@ -287,13 +318,51 @@ public final class StatusItemController: NSObject {
         guard let button = statusItem?.button else { return }
         let accessibility = strings.statusAccessibility
         let toolTip = currentToolTip
-        button.image = NSImage(
-            systemSymbolName: "doc.on.clipboard",
+        button.image = statusImage(
+            systemSymbolName: StatusItemAnimation.defaultSymbolName,
             accessibilityDescription: accessibility
         )
+        button.contentTintColor = nil
         button.toolTip = toolTip
         button.setAccessibilityLabel(accessibility)
         button.setAccessibilityHelp(toolTip)
+    }
+
+    private func statusImage(systemSymbolName: String, accessibilityDescription: String) -> NSImage? {
+        let image = NSImage(
+            systemSymbolName: systemSymbolName,
+            accessibilityDescription: accessibilityDescription
+        )
+        image?.isTemplate = true
+        return image
+    }
+
+    private func addClipboardCapturePulse(to button: NSStatusBarButton) {
+        guard let layer = button.layer else { return }
+
+        let scale = CAKeyframeAnimation(keyPath: "transform.scale")
+        scale.values = [1.0, 1.22, 0.96, 1.0]
+        scale.keyTimes = [0.0, 0.32, 0.72, 1.0]
+        scale.duration = StatusItemAnimation.pulseDuration
+        scale.timingFunctions = [
+            CAMediaTimingFunction(name: .easeOut),
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .easeInEaseOut)
+        ]
+        layer.add(scale, forKey: StatusItemAnimation.pulseKey)
+    }
+
+    private func finishClipboardCaptureAnimation(animationID: UUID) {
+        guard captureAnimationID == animationID else { return }
+        clearClipboardCaptureAnimation()
+        updateStatusButtonPresentation()
+    }
+
+    private func clearClipboardCaptureAnimation() {
+        captureAnimationResetTimer?.invalidate()
+        captureAnimationResetTimer = nil
+        captureAnimationID = nil
+        statusItem?.button?.layer?.removeAnimation(forKey: StatusItemAnimation.pulseKey)
     }
 
     private func selector(for action: StatusItemMenuAction?) -> Selector? {
@@ -383,4 +452,12 @@ private struct StatusItemStrings {
 
         return "PasteX 剪贴板历史。快捷键不可用：\(reason)。请使用菜单栏图标或菜单备用项。"
     }
+}
+
+private enum StatusItemAnimation {
+    static let defaultSymbolName = "doc.on.clipboard"
+    static let captureSymbolName = "doc.on.clipboard.fill"
+    static let pulseKey = "PasteXClipboardCapturePulse"
+    static let pulseDuration: TimeInterval = 0.42
+    static let resetDelay: TimeInterval = 0.5
 }

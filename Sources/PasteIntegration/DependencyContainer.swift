@@ -29,27 +29,10 @@ public final class ClipboardAssistantDependencyContainer {
     ) {
         let appSettings = appSettingsStore?.loadSettings() ?? .default
         let historyStore = ClipboardHistoryStore(capacity: historyCapacity)
-        let clipboardMonitor = ClipboardMonitor(
-            source: clipboardSource,
-            classifier: classifier,
-            historyStore: historyStore,
-            interval: monitorInterval
-        )
         let focusTracker = FocusTracker()
         let commandProxy = ClipboardAssistantCommandProxy(
             settingsHandler: settingsHandler,
             quitHandler: quitHandler
-        )
-        let overlayPresenter = ClipboardOverlayCoordinator(
-            pasteCoordinator: pasteCoordinator,
-            permissionPresenter: permissionPresenter,
-            language: appSettings.language,
-            markSelfWrite: { [clipboardMonitor] item in
-                clipboardMonitor.markSelfWrite(signature: item.signature)
-            },
-            onMenuAction: { [commandProxy] action in
-                commandProxy.handle(action)
-            }
         )
         let toggleProxy = ClipboardAssistantToggleProxy()
         let canOpenSettings = settingsHandler != nil || settingsPresenter != nil
@@ -64,6 +47,28 @@ public final class ClipboardAssistantDependencyContainer {
             quitHandler: quitHandler != nil ? {
                 commandProxy.quit()
             } : nil
+        )
+        let clipboardMonitor = ClipboardMonitor(
+            source: clipboardSource,
+            classifier: classifier,
+            historyStore: historyStore,
+            interval: monitorInterval,
+            newItemHandler: { [weak statusItemController] _ in
+                Task { @MainActor in
+                    statusItemController?.playClipboardCaptureAnimation()
+                }
+            }
+        )
+        let overlayPresenter = ClipboardOverlayCoordinator(
+            pasteCoordinator: pasteCoordinator,
+            permissionPresenter: permissionPresenter,
+            language: appSettings.language,
+            markSelfWrite: { [clipboardMonitor] item in
+                clipboardMonitor.markSelfWrite(signature: item.signature)
+            },
+            onMenuAction: { [commandProxy] action in
+                commandProxy.handle(action)
+            }
         )
         let shortcut = shortcutStore?.loadShortcut() ?? .defaultToggleOverlay
         let app = ClipboardAssistantApp(
