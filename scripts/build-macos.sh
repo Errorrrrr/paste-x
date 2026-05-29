@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="${APP_NAME:-Paste}"
-PRODUCT_NAME="${PRODUCT_NAME:-Paste}"
+APP_NAME="${APP_NAME:-PasteX}"
+PRODUCT_NAME="${PRODUCT_NAME:-PasteX}"
 CONFIGURATION="${CONFIGURATION:-release}"
 ARCH="${ARCH:-arm64}"
 SIGNING_MODE="${SIGNING_MODE:-qa}"
@@ -93,7 +93,10 @@ if [[ ! -x "$EXECUTABLE" ]]; then
 fi
 
 mkdir -p "$DIST_DIR"
-rm -rf "$APP_BUNDLE" "$ZIP_PATH"
+if [[ "$SIGNING_MODE" == "qa" ]]; then
+    find "$DIST_DIR" -maxdepth 1 -type f -name "*-macos-$ARCH-qa-only*.zip" -delete
+fi
+rm -rf "$APP_BUNDLE" "$ZIP_PATH" "$DIST_DIR/Paste.app"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 cp "$INFO_PLIST" "$APP_BUNDLE/Contents/Info.plist"
 cp "$EXECUTABLE" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"

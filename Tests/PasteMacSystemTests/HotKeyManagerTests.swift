@@ -37,6 +37,73 @@ import PasteCore
     #expect(notice.toolTip.contains("Use the menu bar icon or menu fallback"))
 }
 
+@MainActor
+@Test func statusItemControllerRelocalizesHotKeyNoticeWhenLanguageChanges() {
+    let controller = StatusItemController(toggleHandler: {})
+
+    controller.showHotKeyRegistrationFailure(.conflict, shortcut: .defaultToggleOverlay)
+    controller.updateLanguage(.simplifiedChinese)
+
+    #expect(controller.hotKeyNotice?.menuTitle == "快捷键不可用：Cmd+Option+V 已被其他应用占用")
+    #expect(controller.hotKeyNotice?.fallbackTitle == "显示剪贴板历史（菜单备用）")
+    #expect(controller.hotKeyNotice?.toolTip.contains("PasteX 剪贴板历史。快捷键不可用") == true)
+}
+
+@Test func statusItemMenuModelIncludesSettingsAndQuitCommands() {
+    let model = StatusItemMenuModel.make(
+        hotKeyNotice: nil,
+        includesSettings: true,
+        includesQuit: true
+    )
+
+    #expect(model.items.map(\.title) == [
+        "Show Clipboard History",
+        "-",
+        "Settings...",
+        "Quit PasteX"
+    ])
+    #expect(model.items.map(\.action) == [
+        .toggleOverlay,
+        nil,
+        .openSettings,
+        .quit
+    ])
+}
+
+@Test func statusItemMenuModelLocalizesChineseCommands() {
+    let model = StatusItemMenuModel.make(
+        hotKeyNotice: nil,
+        includesSettings: true,
+        includesQuit: true,
+        language: .simplifiedChinese
+    )
+
+    #expect(model.items.map(\.title) == [
+        "显示剪贴板历史",
+        "-",
+        "设置...",
+        "退出 PasteX"
+    ])
+}
+
+@Test func statusItemClickRouterOpensMenuForSecondaryClicksAndControlClick() {
+    #expect(StatusItemClickRouter.route(for: StatusItemClickEvent(
+        type: .rightMouseDown,
+        modifierFlags: [],
+        buttonNumber: 1
+    )) == .openMenu)
+    #expect(StatusItemClickRouter.route(for: StatusItemClickEvent(
+        type: .leftMouseDown,
+        modifierFlags: [.control],
+        buttonNumber: 0
+    )) == .openMenu)
+    #expect(StatusItemClickRouter.route(for: StatusItemClickEvent(
+        type: .leftMouseDown,
+        modifierFlags: [],
+        buttonNumber: 0
+    )) == .toggleOverlay)
+}
+
 @Test func hotKeyManagerUnregistersExistingShortcutBeforeReplacingIt() {
     let backend = FakeHotKeyBackend()
     let manager = HotKeyManager(backend: backend)

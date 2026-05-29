@@ -1,6 +1,6 @@
 # macOS Build And First-Run Notes
 
-This repo ships a SwiftPM executable target named `Paste` and a local macOS app bundle script.
+This repo ships a SwiftPM executable product named `PasteX` and a local macOS app bundle script.
 
 ## Build
 
@@ -10,12 +10,12 @@ This repo ships a SwiftPM executable target named `Paste` and a local macOS app 
 
 Default output:
 
-- `dist/Paste.app`
-- `dist/Paste-macos-arm64-qa-only.zip`
+- `dist/PasteX.app`
+- `dist/PasteX-macos-arm64-qa-only.zip`
 
-The script builds the `Paste` executable in release mode for `arm64`, copies `Resources/Info.plist` into the app bundle, signs the app, verifies the signature, and zips the bundle with `ditto`.
+The script builds the `PasteX` executable in release mode for `arm64`, copies `Resources/Info.plist` into the app bundle, signs the app, verifies the signature, and zips the bundle with `ditto`.
 
-By default `SIGNING_MODE=qa`, which uses ad-hoc signing unless `CODESIGN_IDENTITY` is explicitly provided. QA mode always writes a `*-qa-only.zip` artifact so it is not confused with a distributable macOS release. That package is for local QA and internal handoff only; it is not a Gatekeeper/notarized external release artifact.
+By default `SIGNING_MODE=qa`, which uses ad-hoc signing unless `CODESIGN_IDENTITY` is explicitly provided. QA mode always writes a `*-qa-only.zip` artifact so it is not confused with a distributable macOS release. That package is for local QA and internal handoff only; it is not a Gatekeeper/notarized external release artifact. The QA build also removes older `*-qa-only*.zip` files from `dist/` before writing the new package so the handoff directory keeps only the latest test package.
 
 `Resources/Paste.entitlements` is intentionally empty for MVP non-sandboxed distribution. Clipboard reads and synthesized paste events are guarded by macOS TCC Accessibility consent, not by a sandbox entitlement. If the app later targets the Mac App Store, sandbox behavior needs a separate validation pass because CGEvent-based auto-paste may be constrained.
 
@@ -39,7 +39,7 @@ SIGNING_MODE=release CODESIGN_IDENTITY="Developer ID Application: Example Team (
 - `LSUIElement` is enabled in `Resources/Info.plist`, so launch does not open a Dock icon or a main window.
 - The app runs as a menu bar item using the clipboard icon.
 - Left-click the menu bar item to toggle the bottom clipboard overlay.
-- Right-click or Control-click the menu bar item to open a menu with `Show Clipboard History` and `Quit Paste`.
+- Right-click or Control-click the menu bar item to open a menu with `Show Clipboard History` and `Quit PasteX`.
 - The default global shortcut is `Cmd+Option+V`. If registration fails because of a conflict, the app keeps running, the status item tooltip names the shortcut failure, and the right-click menu exposes `Show Clipboard History (menu fallback)` as the visible backup entry.
 
 ## Permissions
@@ -52,14 +52,14 @@ The app does not request Accessibility at launch. The permission path is first e
 4. If the user grants permission, retrying the paste path can activate the captured target app and send `Cmd+V`.
 5. If the user denies permission, the app keeps the selected item on the general pasteboard and returns the copied-only fallback.
 
-Manual settings path: System Settings -> Privacy & Security -> Accessibility -> enable `Paste`.
+Manual settings path: System Settings -> Privacy & Security -> Accessibility -> enable `PasteX`.
 
 ## QA Smoke Check
 
-1. Open `dist/Paste.app`; verify no main window or Dock icon appears and a clipboard menu bar icon is visible.
+1. Open `dist/PasteX.app`; verify no main window or Dock icon appears and a clipboard menu bar icon is visible.
 2. Copy text, a URL, an image, and a file; verify the overlay shows recent items newest-first with type markers.
 3. Toggle the overlay by menu bar click and by `Cmd+Option+V`.
 4. Use Space, Return, and double-click to paste into TextEdit or another text input.
 5. In a clean user profile, verify the first paste attempt triggers the Accessibility path, and denial falls back to copy-only with a visible overlay message instead of silently closing.
-6. Right-click the menu bar icon, choose `Quit Paste`, reopen the app, and verify the menu bar item and hotkey register again.
-7. With another app already using `Cmd+Option+V`, launch Paste and verify the status item tooltip/menu show the shortcut conflict and `Show Clipboard History (menu fallback)` still opens the overlay.
+6. Right-click the menu bar icon, choose `Quit PasteX`, reopen the app, and verify the menu bar item and hotkey register again.
+7. With another app already using `Cmd+Option+V`, launch PasteX and verify the status item tooltip/menu show the shortcut conflict and `Show Clipboard History (menu fallback)` still opens the overlay.

@@ -59,13 +59,13 @@ import PasteCore
 }
 
 @Test func focusTrackerIgnoresSelfAndCapturesLastExternalApplication() {
-    let tracker = FocusTracker(ownBundleIdentifier: "com.example.Paste")
+    let tracker = FocusTracker(ownBundleIdentifier: "com.example.PasteX")
     let external = RunningApplicationInfo(
         bundleIdentifier: "com.apple.TextEdit",
         processIdentifier: 42
     )
 
-    tracker.recordActivatedApplication(RunningApplicationInfo(bundleIdentifier: "com.example.Paste", processIdentifier: 7), at: Date(timeIntervalSince1970: 1))
+    tracker.recordActivatedApplication(RunningApplicationInfo(bundleIdentifier: "com.example.PasteX", processIdentifier: 7), at: Date(timeIntervalSince1970: 1))
     tracker.recordActivatedApplication(external, at: Date(timeIntervalSince1970: 2))
 
     #expect(tracker.currentTarget == PasteTarget(
@@ -77,7 +77,7 @@ import PasteCore
 
 @Test func focusTrackerRefreshesTargetFromFrontmostApplicationWithoutActivationEvent() {
     let tracker = FocusTracker(
-        ownBundleIdentifier: "com.example.Paste",
+        ownBundleIdentifier: "com.example.PasteX",
         ownProcessIdentifier: 7,
         frontmostApplicationProvider: {
             RunningApplicationInfo(
@@ -118,6 +118,145 @@ import PasteCore
     #expect(overlay.toggles == [OverlayToggle(items: [item], target: target)])
 }
 
+@MainActor
+@Test func clipboardAssistantOpensSettingsAndPersistsUpdatedShortcut() {
+    let hotKeyManager = FakeHotKeyManager()
+    let settingsPresenter = FakeShortcutSettingsPresenter()
+    let shortcutStore = FakeShortcutSettingsStore()
+    let overlay = FakeOverlayPresenter()
+    let app = ClipboardAssistantApp(
+        hotKeyManager: hotKeyManager,
+        clipboardMonitor: FakeClipboardMonitor(),
+        historyStore: FakeClipboardHistory(items: []),
+        overlayPresenter: overlay,
+        focusTracker: FakeRefreshableFocusTracker(target: makeTarget()),
+        statusItemController: StatusItemController(toggleHandler: {}),
+        settingsPresenter: settingsPresenter,
+        shortcutStore: shortcutStore
+    )
+
+    app.openSettings()
+    let customShortcut = HotKeyShortcut(keyEquivalent: "b", modifiers: ["command", "shift"])
+    let result = settingsPresenter.saveHandler?(customShortcut)
+
+    #expect(settingsPresenter.currentShortcut == .defaultToggleOverlay)
+    #expect(settingsPresenter.defaultShortcut == .defaultToggleOverlay)
+    #expect(settingsPresenter.currentSettings == .default)
+    #expect(result?.isSuccess == true)
+    #expect(hotKeyManager.registeredShortcuts == [customShortcut])
+    #expect(shortcutStore.savedShortcuts == [customShortcut])
+    #expect(overlay.hideCount == 1)
+}
+
+@MainActor
+@Test func clipboardAssistantRestoresDefaultShortcutThroughSettingsPresenter() {
+    let hotKeyManager = FakeHotKeyManager()
+    let settingsPresenter = FakeShortcutSettingsPresenter()
+    let shortcutStore = FakeShortcutSettingsStore()
+    let currentShortcut = HotKeyShortcut(keyEquivalent: "b", modifiers: ["command", "shift"])
+    let app = ClipboardAssistantApp(
+        hotKeyManager: hotKeyManager,
+        clipboardMonitor: FakeClipboardMonitor(),
+        historyStore: FakeClipboardHistory(items: []),
+        overlayPresenter: FakeOverlayPresenter(),
+        focusTracker: FakeRefreshableFocusTracker(target: makeTarget()),
+        statusItemController: StatusItemController(toggleHandler: {}),
+        settingsPresenter: settingsPresenter,
+        shortcutStore: shortcutStore,
+        shortcut: currentShortcut
+    )
+
+    app.openSettings()
+    let result = settingsPresenter.saveHandler?(.defaultToggleOverlay)
+
+    #expect(settingsPresenter.currentShortcut == currentShortcut)
+    #expect(settingsPresenter.defaultShortcut == .defaultToggleOverlay)
+    #expect(settingsPresenter.currentSettings == .default)
+    #expect(result?.isSuccess == true)
+    #expect(hotKeyManager.registeredShortcuts == [.defaultToggleOverlay])
+    #expect(shortcutStore.savedShortcuts == [.defaultToggleOverlay])
+}
+
+@MainActor
+@Test func clipboardAssistantPersistsLanguageSettingsAndUpdatesOverlayImmediately() {
+    let settingsPresenter = FakeShortcutSettingsPresenter()
+    let settingsStore = FakeAppSettingsStore()
+    let overlay = FakeOverlayPresenter()
+    let statusItemController = StatusItemController(toggleHandler: {})
+    let app = ClipboardAssistantApp(
+        hotKeyManager: FakeHotKeyManager(),
+        clipboardMonitor: FakeClipboardMonitor(),
+        historyStore: FakeClipboardHistory(items: []),
+        overlayPresenter: overlay,
+        focusTracker: FakeRefreshableFocusTracker(target: makeTarget()),
+        statusItemController: statusItemController,
+        settingsPresenter: settingsPresenter,
+        settingsStore: settingsStore
+    )
+
+    app.openSettings()
+    settingsPresenter.settingsChangeHandler?(AppSettings(language: .simplifiedChinese))
+
+    #expect(settingsStore.savedSettings == [AppSettings(language: .simplifiedChinese)])
+    #expect(overlay.languages == [.english, .simplifiedChinese])
+}
+
+@MainActor
+@Test func clipboardAssistantCloseOverlayHidesWindowWithoutStoppingApp() {
+    let overlay = FakeOverlayPresenter()
+    let app = ClipboardAssistantApp(
+        hotKeyManager: FakeHotKeyManager(),
+        clipboardMonitor: FakeClipboardMonitor(),
+        historyStore: FakeClipboardHistory(items: []),
+        overlayPresenter: overlay,
+        focusTracker: FakeRefreshableFocusTracker(target: makeTarget()),
+        statusItemController: StatusItemController(toggleHandler: {})
+    )
+
+    app.closeOverlay()
+
+    #expect(overlay.hideCount == 1)
+}
+
+@MainActor
+@Test func clipboardAssistantRestoresPreviousShortcutWhenUpdatedShortcutConflicts() {
+    let hotKeyManager = FakeHotKeyManager()
+    hotKeyManager.results = [.failure(.conflict), .success(())]
+    let shortcutStore = FakeShortcutSettingsStore()
+    let app = ClipboardAssistantApp(
+        hotKeyManager: hotKeyManager,
+        clipboardMonitor: FakeClipboardMonitor(),
+        historyStore: FakeClipboardHistory(items: []),
+        overlayPresenter: FakeOverlayPresenter(),
+        focusTracker: FakeRefreshableFocusTracker(target: makeTarget()),
+        statusItemController: StatusItemController(toggleHandler: {}),
+        shortcutStore: shortcutStore
+    )
+
+    let customShortcut = HotKeyShortcut(keyEquivalent: "b", modifiers: ["command", "shift"])
+    let result = app.updateShortcut(customShortcut)
+
+    #expect(result.failure == .conflict)
+    #expect(hotKeyManager.registeredShortcuts == [customShortcut, .defaultToggleOverlay])
+    #expect(shortcutStore.savedShortcuts == [])
+}
+
+@Test func appSettingsStoreDefaultsToEnglishAndPersistsLanguage() {
+    let suiteName = "PasteX.AppSettingsStoreTests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suiteName)!
+    defer {
+        defaults.removePersistentDomain(forName: suiteName)
+    }
+    let store = UserDefaultsAppSettingsStore(defaults: defaults)
+
+    #expect(store.loadSettings() == .default)
+
+    let settings = AppSettings(language: .simplifiedChinese)
+    store.saveSettings(settings)
+
+    #expect(store.loadSettings() == settings)
+}
+
 private final class FakePasteServices: PasteCoordinatorServices {
     var writeResult = true
     var permissionTrusted = true
@@ -154,12 +293,20 @@ private struct OverlayToggle: Equatable {
 
 private final class FakeOverlayPresenter: OverlayPresenting {
     private(set) var toggles: [OverlayToggle] = []
+    private(set) var hideCount = 0
+    private(set) var languages: [AppLanguage] = []
 
     func toggle(items: [ClipboardItem], target: PasteTarget?) {
         toggles.append(OverlayToggle(items: items, target: target))
     }
 
-    func hide() {}
+    func hide() {
+        hideCount += 1
+    }
+
+    func updateLanguage(_ language: AppLanguage) {
+        languages.append(language)
+    }
 }
 
 private final class FakeRefreshableFocusTracker: FocusTargetRefreshing {
@@ -194,11 +341,67 @@ private final class FakeClipboardMonitor: ClipboardMonitoring {
 }
 
 private final class FakeHotKeyManager: HotKeyManaging {
+    var results: [Result<Void, HotKeyError>] = []
+    private(set) var registeredShortcuts: [HotKeyShortcut] = []
+
     func register(shortcut: HotKeyShortcut, handler: @escaping @Sendable () -> Void) -> Result<Void, HotKeyError> {
-        .success(())
+        registeredShortcuts.append(shortcut)
+        if results.isEmpty {
+            return .success(())
+        }
+        return results.removeFirst()
     }
 
     func unregister() {}
+}
+
+@MainActor
+private final class FakeShortcutSettingsPresenter: ShortcutSettingsPresenting {
+    private(set) var currentShortcut: HotKeyShortcut?
+    private(set) var defaultShortcut: HotKeyShortcut?
+    private(set) var currentSettings: AppSettings?
+    private(set) var saveHandler: ((HotKeyShortcut) -> Result<Void, HotKeyError>)?
+    private(set) var settingsChangeHandler: ((AppSettings) -> Void)?
+
+    func openSettings(
+        currentShortcut: HotKeyShortcut,
+        defaultShortcut: HotKeyShortcut,
+        currentSettings: AppSettings,
+        saveHandler: @escaping (HotKeyShortcut) -> Result<Void, HotKeyError>,
+        settingsChangeHandler: @escaping (AppSettings) -> Void
+    ) {
+        self.currentShortcut = currentShortcut
+        self.defaultShortcut = defaultShortcut
+        self.currentSettings = currentSettings
+        self.saveHandler = saveHandler
+        self.settingsChangeHandler = settingsChangeHandler
+    }
+}
+
+private final class FakeShortcutSettingsStore: ShortcutSettingsStoring {
+    var loadedShortcut: HotKeyShortcut?
+    private(set) var savedShortcuts: [HotKeyShortcut] = []
+
+    func loadShortcut() -> HotKeyShortcut? {
+        loadedShortcut
+    }
+
+    func saveShortcut(_ shortcut: HotKeyShortcut) {
+        savedShortcuts.append(shortcut)
+    }
+}
+
+private final class FakeAppSettingsStore: AppSettingsStoring {
+    var loadedSettings: AppSettings = .default
+    private(set) var savedSettings: [AppSettings] = []
+
+    func loadSettings() -> AppSettings {
+        loadedSettings
+    }
+
+    func saveSettings(_ settings: AppSettings) {
+        savedSettings.append(settings)
+    }
 }
 
 private func makePasteItem(payloads: [ClipboardPayload]? = nil) -> ClipboardItem {
@@ -220,4 +423,20 @@ private func makeTarget() -> PasteTarget {
         processIdentifier: 42,
         capturedAt: Date(timeIntervalSince1970: 2)
     )
+}
+
+private extension Result where Success == Void, Failure == HotKeyError {
+    var isSuccess: Bool {
+        if case .success = self {
+            return true
+        }
+        return false
+    }
+
+    var failure: HotKeyError? {
+        if case let .failure(error) = self {
+            return error
+        }
+        return nil
+    }
 }

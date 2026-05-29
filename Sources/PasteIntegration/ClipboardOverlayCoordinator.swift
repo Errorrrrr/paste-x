@@ -10,6 +10,11 @@ public protocol ClipboardOverlayWindowControlling: AnyObject {
     func show(items: [ClipboardItem], on screen: NSScreen?)
     func hideOverlay()
     func showPasteFeedback(_ message: String, hideAfter delay: TimeInterval)
+    func updateLanguage(_ language: AppLanguage)
+}
+
+public extension ClipboardOverlayWindowControlling {
+    func updateLanguage(_ language: AppLanguage) {}
 }
 
 extension OverlayWindowController: ClipboardOverlayWindowControlling {}
@@ -22,6 +27,8 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
     private let pasteCoordinator: SendablePasteCoordinator
     private let permissionPresenter: PermissionPresenting?
     private let markSelfWrite: (ClipboardItem) -> Void
+    private let onMenuAction: (OverlayMenuAction) -> Void
+    private var language: AppLanguage
     private var currentTarget: PasteTarget?
 
     public private(set) var lastPasteResult: PasteResult?
@@ -29,12 +36,18 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
     public convenience init(
         pasteCoordinator: PasteCoordinating,
         permissionPresenter: PermissionPresenting?,
-        markSelfWrite: @escaping (ClipboardItem) -> Void
+        language: AppLanguage = .english,
+        markSelfWrite: @escaping (ClipboardItem) -> Void,
+        onMenuAction: @escaping (OverlayMenuAction) -> Void = { _ in }
     ) {
         let relay = OverlayPasteRequestRelay()
         let windowController = OverlayWindowController(
+            language: language,
             onPasteRequested: { [relay] request in
                 relay.submit(request)
+            },
+            onMenuAction: { [relay] action in
+                relay.submit(action)
             }
         )
 
@@ -42,11 +55,16 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
             windowController: windowController,
             pasteCoordinator: pasteCoordinator,
             permissionPresenter: permissionPresenter,
-            markSelfWrite: markSelfWrite
+            language: language,
+            markSelfWrite: markSelfWrite,
+            onMenuAction: onMenuAction
         )
 
         relay.handler = { [weak self] request in
             self?.submit(request)
+        }
+        relay.menuHandler = { [weak self] action in
+            self?.submit(action)
         }
     }
 
@@ -54,12 +72,16 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
         windowController: ClipboardOverlayWindowControlling,
         pasteCoordinator: PasteCoordinating,
         permissionPresenter: PermissionPresenting?,
-        markSelfWrite: @escaping (ClipboardItem) -> Void
+        language: AppLanguage = .english,
+        markSelfWrite: @escaping (ClipboardItem) -> Void,
+        onMenuAction: @escaping (OverlayMenuAction) -> Void = { _ in }
     ) {
         self.windowController = windowController
         self.pasteCoordinator = SendablePasteCoordinator(base: pasteCoordinator)
         self.permissionPresenter = permissionPresenter
         self.markSelfWrite = markSelfWrite
+        self.onMenuAction = onMenuAction
+        self.language = language
     }
 
     public nonisolated func toggle(items: [ClipboardItem], target: PasteTarget?) {
@@ -87,6 +109,17 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
         }
     }
 
+    public func submit(_ action: OverlayMenuAction) {
+        onMenuAction(action)
+    }
+
+    public nonisolated func updateLanguage(_ language: AppLanguage) {
+        Task { @MainActor [weak self] in
+            self?.language = language
+            self?.windowController.updateLanguage(language)
+        }
+    }
+
     @discardableResult
     public func paste(_ request: OverlayPasteRequest) async -> PasteResult {
         _ = permissionPresenter?.ensureAccessibilityPermission()
@@ -99,7 +132,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
             markSelfWrite(request.item)
         }
 
-        if let feedbackMessage = result.copyOnlyFeedbackMessage {
+        if let feedbackMessage = result.copyOnlyFeedbackMessage(language: language) {
             windowController.showPasteFeedback(feedbackMessage, hideAfter: Constants.copyOnlyFeedbackDuration)
         } else if result.shouldHideOverlayAfterPaste {
             windowController.hideOverlay()
@@ -119,18 +152,24 @@ private struct SendablePasteCoordinator: @unchecked Sendable {
 
 private final class OverlayPasteRequestRelay {
     var handler: ((OverlayPasteRequest) -> Void)?
+    var menuHandler: ((OverlayMenuAction) -> Void)?
 
     @MainActor
     func submit(_ request: OverlayPasteRequest) {
         handler?(request)
     }
+
+    @MainActor
+    func submit(_ action: OverlayMenuAction) {
+        menuHandler?(action)
+    }
 }
 
 private extension PasteResult {
-    var copyOnlyFeedbackMessage: String? {
+    func copyOnlyFeedbackMessage(language: AppLanguage) -> String? {
         switch self {
         case let .copiedOnly(reason):
-            return reason.feedbackMessage
+            return reason.feedbackMessage(language: language)
         case .pasted, .failed:
             return nil
         }
@@ -156,16 +195,24 @@ private extension PasteResult {
 }
 
 private extension PasteFallbackReason {
-    var feedbackMessage: String {
+    func feedbackMessage(language: AppLanguage) -> String {
         switch self {
         case .accessibilityNotTrusted:
-            return "Copied to clipboard. Enable Accessibility to paste automatically."
+            return language == .english
+                ? "Copied to clipboard. Enable Accessibility to paste automatically."
+                : "已复制到剪贴板。请开启辅助功能权限以自动粘贴。"
         case .targetUnavailable:
-            return "Copied to clipboard. Reopen Paste from the target app to paste automatically."
+            return language == .english
+                ? "Copied to clipboard. Reopen PasteX from the target app to paste automatically."
+                : "已复制到剪贴板。请从目标应用重新打开 PasteX 以自动粘贴。"
         case .activationFailed:
-            return "Copied to clipboard. Could not return to the target app."
+            return language == .english
+                ? "Copied to clipboard. Could not return to the target app."
+                : "已复制到剪贴板。无法返回目标应用。"
         case .eventPostFailed:
-            return "Copied to clipboard. Could not send the paste command."
+            return language == .english
+                ? "Copied to clipboard. Could not send the paste command."
+                : "已复制到剪贴板。无法发送粘贴命令。"
         }
     }
 }

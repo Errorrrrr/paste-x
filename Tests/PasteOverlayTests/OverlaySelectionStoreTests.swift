@@ -3,6 +3,12 @@ import PasteCore
 @testable import PasteOverlay
 import Testing
 
+@Test func menuActionContractUsesFrontendCaseNamesAndRawValues() throws {
+    #expect(OverlayMenuAction.settings.rawValue == "settings")
+    #expect(OverlayMenuAction.close.rawValue == "close")
+    #expect(OverlayMenuAction.quit.rawValue == "quit")
+}
+
 @MainActor
 @Test func selectionDefaultsToFirstItemAndMovesWithinBounds() throws {
     let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 100))
@@ -47,6 +53,43 @@ import Testing
 
     #expect(request?.item == items[1])
     #expect(request?.trigger == .returnKey)
+}
+
+@MainActor
+@Test func searchFiltersItemsAndKeepsSelectionInsideResults() throws {
+    let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 325))
+    let store = OverlaySelectionStore(items: Array(items.prefix(4)))
+
+    store.updateSearchQuery("https")
+
+    #expect(store.isSearching)
+    #expect(store.visibleItems.map(\.kind) == [.url])
+    #expect(store.selectedItem?.kind == .url)
+
+    store.updateSearchQuery("missing-value")
+    #expect(store.visibleItems.isEmpty)
+    #expect(store.selectedItem == nil)
+
+    store.deactivateSearch()
+    #expect(store.visibleItems.count == 4)
+    #expect(store.selectedItem?.id == items[0].id)
+}
+
+@MainActor
+@Test func directTypingCanPrefillSearchAndRefreshClearsSearchMode() throws {
+    let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 330))
+    let store = OverlaySelectionStore(items: Array(items.prefix(3)))
+
+    store.activateSearch(prefill: "im")
+    store.appendSearchText("age")
+
+    #expect(store.searchQuery == "image")
+    #expect(store.visibleItems.map(\.kind) == [.image])
+
+    store.replaceItems(Array(items.suffix(2)))
+    #expect(!store.isSearching)
+    #expect(store.searchQuery.isEmpty)
+    #expect(store.visibleItems == Array(items.suffix(2)))
 }
 
 @MainActor

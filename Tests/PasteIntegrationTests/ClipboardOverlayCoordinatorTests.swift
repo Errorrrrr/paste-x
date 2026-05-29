@@ -106,6 +106,51 @@ import Testing
     #expect(windowController.isVisible == false)
 }
 
+@MainActor
+@Test func overlayCoordinatorDispatchesSettingsCloseAndQuitMenuActions() {
+    let windowController = FakeOverlayWindowController()
+    var actions: [OverlayMenuAction] = []
+    let coordinator = ClipboardOverlayCoordinator(
+        windowController: windowController,
+        pasteCoordinator: FakePasteCoordinator(result: .pasted),
+        permissionPresenter: nil,
+        markSelfWrite: { _ in },
+        onMenuAction: { action in
+            actions.append(action)
+        }
+    )
+
+    coordinator.submit(.settings)
+    coordinator.submit(.close)
+    coordinator.submit(.quit)
+
+    #expect(actions == [.settings, .close, .quit])
+}
+
+@MainActor
+@Test func dependencyContainerDispatchesOverlaySettingsCloseAndQuitActions() {
+    var settingsCount = 0
+    var quitCount = 0
+    let container = ClipboardAssistantDependencyContainer(
+        settingsPresenter: nil,
+        shortcutStore: nil,
+        appSettingsStore: nil,
+        settingsHandler: {
+            settingsCount += 1
+        },
+        quitHandler: {
+            quitCount += 1
+        }
+    )
+
+    container.overlayPresenter.submit(.settings)
+    container.overlayPresenter.submit(.close)
+    container.overlayPresenter.submit(.quit)
+
+    #expect(settingsCount == 1)
+    #expect(quitCount == 1)
+}
+
 private struct PasteRequest: Equatable {
     let item: ClipboardItem
     let target: PasteTarget?

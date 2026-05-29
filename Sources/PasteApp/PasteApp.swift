@@ -30,9 +30,9 @@ private final class PasteAppDelegate: NSObject, NSApplicationDelegate {
 
         switch container.start() {
         case .success:
-            NSLog("Paste started with menu bar status item and default Cmd+Option+V hotkey.")
+            NSLog("PasteX started with menu bar status item and default Cmd+Option+V hotkey.")
         case let .failure(error):
-            NSLog("Paste started, but default hotkey registration failed: \(error.startupDescription)")
+            NSLog("PasteX started, but default hotkey registration failed: \(error.startupDescription)")
         }
     }
 

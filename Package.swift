@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "PasteClipboardAssistantContracts",
+    name: "PasteX",
     platforms: [
         .macOS(.v14)
     ],
@@ -24,7 +24,7 @@ let package = Package(
             targets: ["PasteOverlay"]
         ),
         .executable(
-            name: "Paste",
+            name: "PasteX",
             targets: ["PasteApp"]
         )
     ],

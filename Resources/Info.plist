@@ -5,15 +5,15 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>Paste</string>
+    <string>PasteX</string>
     <key>CFBundleExecutable</key>
-    <string>Paste</string>
+    <string>PasteX</string>
     <key>CFBundleIdentifier</key>
-    <string>com.errorrrrr.paste</string>
+    <string>com.errorrrrr.pastex</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Paste</string>
+    <string>PasteX</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
