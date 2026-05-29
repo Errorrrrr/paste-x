@@ -28,12 +28,12 @@ public enum OverlayMockData {
             ),
             makeItem(
                 kind: .image,
-                summary: "Screenshot 1280 x 720",
+                summary: "Screenshot 2 x 2",
                 createdAt: referenceDate.addingTimeInterval(-120),
                 payloads: [
                     ClipboardPayload(
                         typeIdentifier: "public.png",
-                        data: Data([0x89, 0x50, 0x4E, 0x47])
+                        data: sampleImagePNGData
                     )
                 ]
             ),
@@ -76,4 +76,6 @@ public enum OverlayMockData {
             payloads: payloads
         )
     }
+
+    private static let sampleImagePNGData = Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAGElEQVR42mP8z8Dwn4GBgYGBgYGJAQoAHxcCAuGgeUYAAAAASUVORK5CYII=") ?? Data()
 }

@@ -1,3 +1,4 @@
+import AppKit
 import PasteCore
 import SwiftUI
 
@@ -101,16 +102,31 @@ public struct ClipboardItemView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
 
         case .image:
+            let preview = ClipboardImagePreview.make(from: item)
+
             ZStack(alignment: .bottomTrailing) {
                 CheckerboardView()
 
-                RoundedRectangle(cornerRadius: 0)
-                    .fill(Color.red)
-                    .padding(.leading, 26)
+                if let preview {
+                    Image(nsImage: preview.image)
+                        .resizable()
+                        .interpolation(.medium)
+                        .antialiased(true)
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(12)
+                        .accessibilityLabel(imagePreviewAccessibilityLabel)
+                } else {
+                    Image(systemName: "photo")
+                        .font(.system(size: 48, weight: .regular))
+                        .foregroundStyle(Color(nsColor: .tertiaryLabelColor))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityLabel(imagePreviewAccessibilityLabel)
+                }
 
                 Text(imageDimensionText)
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.red.opacity(0.72))
+                    .foregroundStyle(Color(nsColor: .secondaryLabelColor))
                     .padding(.horizontal, 8)
                     .frame(height: 22)
                     .background(
@@ -247,6 +263,10 @@ public struct ClipboardItemView: View {
         }
 
         return language == .english ? "Image" : "图片"
+    }
+
+    private var imagePreviewAccessibilityLabel: String {
+        language == .english ? "Image preview" : "图片预览"
     }
 }
 
