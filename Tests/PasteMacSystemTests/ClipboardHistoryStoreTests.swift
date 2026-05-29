@@ -34,7 +34,15 @@ import PasteCore
     let source = FakeClipboardSource()
     let store = ClipboardHistoryStore(capacity: 10)
     let classifier = ClipboardClassifier()
-    let monitor = ClipboardMonitor(source: source, classifier: classifier, historyStore: store)
+    var notifiedSummaries: [String] = []
+    let monitor = ClipboardMonitor(
+        source: source,
+        classifier: classifier,
+        historyStore: store,
+        newItemHandler: { item in
+            notifiedSummaries.append(item.summary)
+        }
+    )
 
     source.changeCount = 1
     source.payloads = [ClipboardPayload(typeIdentifier: PasteboardTypeIdentifier.plainText, data: Data("first".utf8))]
@@ -53,6 +61,7 @@ import PasteCore
 
     #expect(firstSignature.hasPrefix("text:"))
     #expect(store.items.map(\.summary) == ["second", "first"])
+    #expect(notifiedSummaries == ["first", "second"])
 }
 
 @Test func clipboardMonitorClearsStaleSelfWriteAfterOneObservedChange() {

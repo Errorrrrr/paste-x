@@ -49,6 +49,15 @@ import PasteCore
     #expect(controller.hotKeyNotice?.toolTip.contains("PasteX 剪贴板历史。快捷键不可用") == true)
 }
 
+@Test func statusItemIconUsesLogoStyleWithoutTemplateTinting() {
+    let image = StatusItemIcon.make(accessibilityDescription: "PasteX clipboard history")
+
+    #expect(image.size.width == 18)
+    #expect(image.size.height == 18)
+    #expect(image.isTemplate == false)
+    #expect(image.accessibilityDescription == "PasteX clipboard history")
+}
+
 @Test func statusItemMenuModelIncludesSettingsAndQuitCommands() {
     let model = StatusItemMenuModel.make(
         hotKeyNotice: nil,

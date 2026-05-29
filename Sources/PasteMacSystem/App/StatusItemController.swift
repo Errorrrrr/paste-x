@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import PasteCore
+import QuartzCore
 
 struct HotKeyRegistrationNotice: Equatable, Sendable {
     let menuTitle: String
@@ -149,6 +150,8 @@ public final class StatusItemController: NSObject {
     private var statusMenu: NSMenu?
     private(set) var hotKeyNotice: HotKeyRegistrationNotice?
     private var hotKeyFailure: (error: HotKeyError, shortcut: HotKeyShortcut)?
+    private var captureAnimationResetTimer: Timer?
+    private var captureAnimationID: UUID?
 
     public init(
         language: AppLanguage = .english,
@@ -176,8 +179,31 @@ public final class StatusItemController: NSObject {
 
     public func uninstall() {
         guard let statusItem else { return }
+        clearClipboardCaptureAnimation()
         NSStatusBar.system.removeStatusItem(statusItem)
         self.statusItem = nil
+    }
+
+    public func playClipboardCaptureAnimation() {
+        guard let button = statusItem?.button else { return }
+
+        captureAnimationResetTimer?.invalidate()
+        let animationID = UUID()
+        captureAnimationID = animationID
+
+        updateStatusButtonPresentation()
+        button.wantsLayer = true
+        button.layer?.removeAnimation(forKey: StatusItemAnimation.pulseKey)
+        addClipboardCapturePulse(to: button)
+
+        captureAnimationResetTimer = Timer.scheduledTimer(
+            withTimeInterval: StatusItemAnimation.resetDelay,
+            repeats: false
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.finishClipboardCaptureAnimation(animationID: animationID)
+            }
+        }
     }
 
     public func clearHotKeyRegistrationNotice() {
@@ -287,13 +313,39 @@ public final class StatusItemController: NSObject {
         guard let button = statusItem?.button else { return }
         let accessibility = strings.statusAccessibility
         let toolTip = currentToolTip
-        button.image = NSImage(
-            systemSymbolName: "doc.on.clipboard",
-            accessibilityDescription: accessibility
-        )
+        button.image = StatusItemIcon.make(accessibilityDescription: accessibility)
+        button.contentTintColor = nil
         button.toolTip = toolTip
         button.setAccessibilityLabel(accessibility)
         button.setAccessibilityHelp(toolTip)
+    }
+
+    private func addClipboardCapturePulse(to button: NSStatusBarButton) {
+        guard let layer = button.layer else { return }
+
+        let scale = CAKeyframeAnimation(keyPath: "transform.scale")
+        scale.values = [1.0, 1.22, 0.96, 1.0]
+        scale.keyTimes = [0.0, 0.32, 0.72, 1.0]
+        scale.duration = StatusItemAnimation.pulseDuration
+        scale.timingFunctions = [
+            CAMediaTimingFunction(name: .easeOut),
+            CAMediaTimingFunction(name: .easeInEaseOut),
+            CAMediaTimingFunction(name: .easeInEaseOut)
+        ]
+        layer.add(scale, forKey: StatusItemAnimation.pulseKey)
+    }
+
+    private func finishClipboardCaptureAnimation(animationID: UUID) {
+        guard captureAnimationID == animationID else { return }
+        clearClipboardCaptureAnimation()
+        updateStatusButtonPresentation()
+    }
+
+    private func clearClipboardCaptureAnimation() {
+        captureAnimationResetTimer?.invalidate()
+        captureAnimationResetTimer = nil
+        captureAnimationID = nil
+        statusItem?.button?.layer?.removeAnimation(forKey: StatusItemAnimation.pulseKey)
     }
 
     private func selector(for action: StatusItemMenuAction?) -> Selector? {
@@ -319,6 +371,63 @@ extension StatusItemController: NSMenuDelegate {
         if menu === statusMenu {
             statusMenu = nil
         }
+    }
+}
+
+enum StatusItemIcon {
+    static let size = NSSize(width: 18, height: 18)
+
+    static func make(accessibilityDescription: String) -> NSImage {
+        let image = NSImage(size: size, flipped: false) { rect in
+            draw(in: rect)
+            return true
+        }
+        image.isTemplate = false
+        image.accessibilityDescription = accessibilityDescription
+        return image
+    }
+
+    private static func draw(in rect: NSRect) {
+        let xScale = rect.width / size.width
+        let yScale = rect.height / size.height
+        let strokeScale = min(xScale, yScale)
+
+        func point(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
+            NSPoint(
+                x: rect.minX + x * xScale,
+                y: rect.minY + y * yScale
+            )
+        }
+
+        let markPath = NSBezierPath()
+        markPath.move(to: point(4.8, 3.1))
+        markPath.line(to: point(4.8, 11.8))
+        markPath.curve(
+            to: point(12.7, 11.8),
+            controlPoint1: point(5.5, 14.3),
+            controlPoint2: point(12.7, 14.6)
+        )
+        markPath.curve(
+            to: point(7.1, 8.4),
+            controlPoint1: point(12.7, 9.1),
+            controlPoint2: point(10.1, 8.4)
+        )
+        markPath.lineCapStyle = .round
+        markPath.lineJoinStyle = .round
+        markPath.lineWidth = 3.35 * strokeScale
+        NSColor(calibratedRed: 0.08, green: 0.42, blue: 1.0, alpha: 1.0).setStroke()
+        markPath.stroke()
+
+        let xPath = NSBezierPath()
+        xPath.move(to: point(10.7, 3.4))
+        xPath.line(to: point(15.0, 7.7))
+        xPath.move(to: point(15.0, 3.4))
+        xPath.line(to: point(10.7, 7.7))
+        xPath.lineCapStyle = .round
+        xPath.lineJoinStyle = .round
+        xPath.lineWidth = 2.75 * strokeScale
+        NSColor(calibratedRed: 0.0, green: 0.78, blue: 0.65, alpha: 1.0).setStroke()
+        xPath.stroke()
     }
 }
 
@@ -383,4 +492,10 @@ private struct StatusItemStrings {
 
         return "PasteX 剪贴板历史。快捷键不可用：\(reason)。请使用菜单栏图标或菜单备用项。"
     }
+}
+
+private enum StatusItemAnimation {
+    static let pulseKey = "PasteXClipboardCapturePulse"
+    static let pulseDuration: TimeInterval = 0.42
+    static let resetDelay: TimeInterval = 0.5
 }
