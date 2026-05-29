@@ -38,11 +38,11 @@ public struct ClipboardItemView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 2)
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .gesture(
-            TapGesture(count: 2)
-                .onEnded { onPaste() }
-                .exclusively(before: TapGesture().onEnded { onSelect() })
-        )
+        .overlay {
+            ClipboardItemMouseEventBridge(onSelect: onSelect, onPaste: onPaste)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityHidden(true)
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(item.kind.rawValue), \(item.summary)")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
@@ -267,6 +267,67 @@ public struct ClipboardItemView: View {
 
     private var imagePreviewAccessibilityLabel: String {
         language == .english ? "Image preview" : "图片预览"
+    }
+}
+
+private struct ClipboardItemMouseEventBridge: NSViewRepresentable {
+    let onSelect: () -> Void
+    let onPaste: () -> Void
+
+    func makeNSView(context: Context) -> ClipboardItemMouseEventView {
+        let view = ClipboardItemMouseEventView()
+        view.setAccessibilityElement(false)
+        return view
+    }
+
+    func updateNSView(_ nsView: ClipboardItemMouseEventView, context: Context) {
+        nsView.onSelect = onSelect
+        nsView.onPaste = onPaste
+    }
+
+    static func dismantleNSView(_ nsView: ClipboardItemMouseEventView, coordinator: ()) {
+        nsView.cancelPendingSelection()
+    }
+}
+
+final class ClipboardItemMouseEventView: NSView {
+    var onSelect: () -> Void = {}
+    var onPaste: () -> Void = {}
+    var singleClickDelay: TimeInterval = NSEvent.doubleClickInterval
+    private var pendingSelectWorkItem: DispatchWorkItem?
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount >= 2 {
+            cancelPendingSelection()
+            onPaste()
+        } else {
+            scheduleSelection()
+        }
+    }
+
+    private func scheduleSelection() {
+        cancelPendingSelection()
+
+        guard singleClickDelay > 0 else {
+            onSelect()
+            return
+        }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.pendingSelectWorkItem = nil
+            self?.onSelect()
+        }
+        pendingSelectWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + singleClickDelay, execute: workItem)
+    }
+
+    func cancelPendingSelection() {
+        pendingSelectWorkItem?.cancel()
+        pendingSelectWorkItem = nil
     }
 }
 
