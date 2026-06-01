@@ -201,8 +201,12 @@ public final class OverlayWindowController: NSObject {
                 return event
             }
 
-            let isInsidePanel = event.window === panel || panel.frame.contains(NSEvent.mouseLocation)
-            if !isInsidePanel {
+            let isOutsidePanel = OverlayOutsideClickPolicy.isOutsidePanel(
+                panelFrame: panel.frame,
+                eventWindowIsPanel: event.window === panel,
+                mouseLocation: NSEvent.mouseLocation
+            )
+            if isOutsidePanel {
                 Task { @MainActor in
                     self?.hideOverlay()
                 }
@@ -211,7 +215,20 @@ public final class OverlayWindowController: NSObject {
             return event
         }
 
-        globalMouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: Layout.outsideClickEventMask) { [weak self] _ in
+        globalMouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: Layout.outsideClickEventMask) { [weak self, weak panel] _ in
+            guard let panel else {
+                return
+            }
+
+            let isOutsidePanel = OverlayOutsideClickPolicy.isOutsidePanel(
+                panelFrame: panel.frame,
+                eventWindowIsPanel: false,
+                mouseLocation: NSEvent.mouseLocation
+            )
+            guard isOutsidePanel else {
+                return
+            }
+
             Task { @MainActor in
                 self?.hideOverlay()
             }
@@ -359,6 +376,16 @@ enum OverlayPanelGeometry {
 
     static func hiddenFrame(from restingFrame: NSRect) -> NSRect {
         restingFrame.offsetBy(dx: 0, dy: -Layout.slideDistance)
+    }
+}
+
+enum OverlayOutsideClickPolicy {
+    static func isOutsidePanel(
+        panelFrame: NSRect,
+        eventWindowIsPanel: Bool,
+        mouseLocation: NSPoint
+    ) -> Bool {
+        !eventWindowIsPanel && !panelFrame.contains(mouseLocation)
     }
 }
 

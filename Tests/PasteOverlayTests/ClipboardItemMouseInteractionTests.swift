@@ -1,11 +1,12 @@
 import AppKit
+import Foundation
+import PasteCore
 @testable import PasteOverlay
 import Testing
 
 @MainActor
 @Test func clipboardItemMouseViewDispatchesSingleClickToSelection() throws {
     let view = ClipboardItemMouseEventView(frame: NSRect(x: 0, y: 0, width: 248, height: 244))
-    view.singleClickDelay = 0
     var actions: [String] = []
     view.onSelect = { actions.append("select") }
     view.onPaste = { actions.append("paste") }
@@ -28,9 +29,8 @@ import Testing
 }
 
 @MainActor
-@Test func clipboardItemMouseViewCancelsPendingSelectionWhenDoubleClickCompletes() throws {
+@Test func clipboardItemMouseViewSelectsImmediatelyBeforeDoubleClickPaste() throws {
     let view = ClipboardItemMouseEventView(frame: NSRect(x: 0, y: 0, width: 248, height: 244))
-    view.singleClickDelay = 10
     var actions: [String] = []
     view.onSelect = { actions.append("select") }
     view.onPaste = { actions.append("paste") }
@@ -38,7 +38,63 @@ import Testing
     view.mouseDown(with: try makeMouseDown(clickCount: 1))
     view.mouseDown(with: try makeMouseDown(clickCount: 2))
 
-    #expect(actions == ["paste"])
+    #expect(actions == ["select", "paste"])
+}
+
+@MainActor
+@Test func scrollableListDoubleClickOnUncenteredMouseSelectedItemPastesOriginalItemBeforeDeferredScroll() throws {
+    let items = makeScrollableTextItems(count: 8)
+    let targetItem = items[6]
+    let store = OverlaySelectionStore(items: items)
+    let scrollPolicy = OverlaySelectionScrollPolicy(mouseSelectionDelay: 0.5)
+    let view = ClipboardItemMouseEventView(frame: NSRect(x: 0, y: 0, width: 248, height: 244))
+    var immediateScrollIDs: [ClipboardItem.ID] = []
+    var deferredScrollIDs: [ClipboardItem.ID] = []
+    var deferredScrolls: [() -> Void] = []
+    var pasteRequests: [OverlayPasteRequest] = []
+
+    func applySelectionScroll() {
+        guard let request = scrollPolicy.scrollRequest(
+            for: store.selectedItemID,
+            source: store.lastSelectionSource
+        ) else {
+            return
+        }
+
+        if request.delay > 0 {
+            deferredScrolls.append {
+                deferredScrollIDs.append(request.itemID)
+            }
+        } else {
+            immediateScrollIDs.append(request.itemID)
+        }
+    }
+
+    view.onSelect = {
+        store.select(id: targetItem.id, source: .mouse)
+        applySelectionScroll()
+    }
+    view.onPaste = {
+        store.select(id: targetItem.id, source: .mouse)
+        if let request = store.makePasteRequest(trigger: .doubleClick) {
+            pasteRequests.append(request)
+        }
+    }
+
+    view.mouseDown(with: try makeMouseDown(clickCount: 1))
+
+    #expect(store.selectedItemID == targetItem.id)
+    #expect(immediateScrollIDs.isEmpty)
+    #expect(deferredScrolls.count == 1)
+
+    view.mouseDown(with: try makeMouseDown(clickCount: 2))
+
+    #expect(pasteRequests == [OverlayPasteRequest(item: targetItem, trigger: .doubleClick)])
+    #expect(immediateScrollIDs.isEmpty)
+    #expect(deferredScrollIDs.isEmpty)
+
+    deferredScrolls.forEach { $0() }
+    #expect(deferredScrollIDs == [targetItem.id])
 }
 
 private func makeMouseDown(clickCount: Int) throws -> NSEvent {
@@ -55,4 +111,23 @@ private func makeMouseDown(clickCount: Int) throws -> NSEvent {
             pressure: 1
         )
     )
+}
+
+private func makeScrollableTextItems(count: Int) -> [ClipboardItem] {
+    (0..<count).map { index in
+        let summary = "Scrollable clipboard item \(index)"
+        let payload = ClipboardPayload(
+            typeIdentifier: "public.utf8-plain-text",
+            data: Data(summary.utf8)
+        )
+
+        return ClipboardItem(
+            id: UUID(uuidString: "00000000-0000-0000-0000-\(String(format: "%012d", index))") ?? UUID(),
+            kind: .text,
+            summary: summary,
+            createdAt: Date(timeIntervalSince1970: TimeInterval(index)),
+            signature: "scrollable-text-\(index)",
+            payloads: [payload]
+        )
+    }
 }
