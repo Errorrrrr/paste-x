@@ -10,15 +10,20 @@ import Testing
     let item = makeItem(summary: "hello", signature: "text:hello")
     let target = makeTarget()
     let windowController = FakeOverlayWindowController()
-    let pasteCoordinator = FakePasteCoordinator(result: .pasted)
     let permissionPresenter = FakePermissionPresenter()
-    var markedSelfWrites: [String] = []
+    var events: [String] = []
+    let pasteCoordinator = FakePasteCoordinator(result: .pasted) {
+        events.append("paste")
+    }
     let coordinator = ClipboardOverlayCoordinator(
         windowController: windowController,
         pasteCoordinator: pasteCoordinator,
         permissionPresenter: permissionPresenter,
         markSelfWrite: { item in
-            markedSelfWrites.append(item.signature)
+            events.append("mark:\(item.signature)")
+        },
+        cancelSelfWrite: { item in
+            events.append("cancel:\(item.signature)")
         }
     )
 
@@ -31,7 +36,7 @@ import Testing
     #expect(coordinator.lastPasteResult == .pasted)
     #expect(pasteCoordinator.requests == [PasteRequest(item: item, target: target)])
     #expect(permissionPresenter.ensureCount == 1)
-    #expect(markedSelfWrites == ["text:hello"])
+    #expect(events == ["mark:text:hello", "paste"])
     #expect(windowController.hideCount == 1)
     #expect(windowController.isVisible == false)
 }
@@ -63,13 +68,16 @@ import Testing
     ])
 
     let failedWindow = FakeOverlayWindowController()
-    var failedMarkedSelfWrites: [String] = []
+    var failedEvents: [String] = []
     let failedCoordinator = ClipboardOverlayCoordinator(
         windowController: failedWindow,
         pasteCoordinator: FakePasteCoordinator(result: .failed(reason: .pasteboardWriteFailed)),
         permissionPresenter: nil,
         markSelfWrite: { item in
-            failedMarkedSelfWrites.append(item.signature)
+            failedEvents.append("mark:\(item.signature)")
+        },
+        cancelSelfWrite: { item in
+            failedEvents.append("cancel:\(item.signature)")
         }
     )
 
@@ -80,7 +88,7 @@ import Testing
     #expect(failedResult == .failed(reason: .pasteboardWriteFailed))
     #expect(failedWindow.hideCount == 0)
     #expect(failedWindow.isVisible == true)
-    #expect(failedMarkedSelfWrites == [])
+    #expect(failedEvents == ["mark:text:hello", "cancel:text:hello"])
 }
 
 @MainActor
@@ -187,13 +195,16 @@ private final class FakeOverlayWindowController: ClipboardOverlayWindowControlli
 
 private final class FakePasteCoordinator: PasteCoordinating {
     private let result: PasteResult
+    private let onPaste: () -> Void
     private(set) var requests: [PasteRequest] = []
 
-    init(result: PasteResult) {
+    init(result: PasteResult, onPaste: @escaping () -> Void = {}) {
         self.result = result
+        self.onPaste = onPaste
     }
 
     func paste(_ item: ClipboardItem, to target: PasteTarget?) async -> PasteResult {
+        onPaste()
         requests.append(PasteRequest(item: item, target: target))
         return result
     }

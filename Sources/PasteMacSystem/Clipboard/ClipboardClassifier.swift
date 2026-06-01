@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import PasteCore
+import UniformTypeIdentifiers
 
 public enum PasteboardTypeIdentifier {
     public static let plainText = "public.utf8-plain-text"
@@ -37,12 +38,12 @@ public final class ClipboardClassifier: ClipboardClassifying {
     }
 
     private func detectKind(from payloads: [ClipboardPayload]) -> ClipboardKind {
-        if payloads.contains(where: { $0.typeIdentifier == PasteboardTypeIdentifier.fileURL }) {
-            return .file
+        if payloads.contains(where: { Self.isImageType($0.typeIdentifier) }) {
+            return .image
         }
 
-        if payloads.contains(where: { Self.imageTypes.contains($0.typeIdentifier) }) {
-            return .image
+        if payloads.contains(where: { $0.typeIdentifier == PasteboardTypeIdentifier.fileURL }) {
+            return .file
         }
 
         if payloads.contains(where: { $0.typeIdentifier == PasteboardTypeIdentifier.url }) {
@@ -107,7 +108,7 @@ public final class ClipboardClassifier: ClipboardClassifying {
     }
 
     private func imageSummary(in payloads: [ClipboardPayload]) -> String? {
-        for payload in payloads where Self.imageTypes.contains(payload.typeIdentifier) {
+        for payload in payloads where Self.isImageType(payload.typeIdentifier) {
             guard let size = Self.imagePixelSize(from: payload.data) else {
                 continue
             }
@@ -154,6 +155,18 @@ public final class ClipboardClassifier: ClipboardClassifying {
             return false
         }
         return scheme == "http" || scheme == "https"
+    }
+
+    static func isImageType(_ typeIdentifier: String) -> Bool {
+        if imageTypes.contains(typeIdentifier) {
+            return true
+        }
+
+        guard let type = UTType(typeIdentifier) else {
+            return false
+        }
+
+        return type.conforms(to: .image)
     }
 
     private static let textTypes: Set<String> = [

@@ -66,6 +66,9 @@ public final class ClipboardAssistantDependencyContainer {
             markSelfWrite: { [clipboardMonitor] item in
                 clipboardMonitor.markSelfWrite(signature: item.signature)
             },
+            cancelSelfWrite: { [clipboardMonitor] item in
+                clipboardMonitor.cancelSelfWrite(signature: item.signature)
+            },
             onMenuAction: { [commandProxy] action in
                 commandProxy.handle(action)
             }
