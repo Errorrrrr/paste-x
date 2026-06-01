@@ -38,12 +38,12 @@ public final class ClipboardClassifier: ClipboardClassifying {
     }
 
     private func detectKind(from payloads: [ClipboardPayload]) -> ClipboardKind {
-        if payloads.contains(where: { Self.isImageType($0.typeIdentifier) }) {
-            return .image
-        }
-
         if payloads.contains(where: { $0.typeIdentifier == PasteboardTypeIdentifier.fileURL }) {
             return .file
+        }
+
+        if payloads.contains(where: { Self.isImageType($0.typeIdentifier) }) {
+            return .image
         }
 
         if payloads.contains(where: { $0.typeIdentifier == PasteboardTypeIdentifier.url }) {

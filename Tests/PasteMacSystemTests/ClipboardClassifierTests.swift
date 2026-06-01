@@ -106,6 +106,36 @@ import PasteCore
     #expect(item.signature.hasPrefix("image:"))
 }
 
+@Test func classifierTreatsFileURLsAsFilesBeforeImagePayloads() throws {
+    let classifier = ClipboardClassifier()
+    let createdAt = Date(timeIntervalSince1970: 26.5)
+    let fileName = "Vacation.heic"
+    let filePayload = ClipboardPayload(
+        typeIdentifier: PasteboardTypeIdentifier.fileURL,
+        data: Data("file:///Users/example/\(fileName)".utf8)
+    )
+
+    for imagePayload in [
+        ClipboardPayload(
+            typeIdentifier: PasteboardTypeIdentifier.png,
+            data: try makePNGData(width: 2, height: 2)
+        ),
+        ClipboardPayload(
+            typeIdentifier: PasteboardTypeIdentifier.heic,
+            data: Data([1, 2, 3])
+        )
+    ] {
+        let item = try #require(classifier.makeItem(
+            from: [imagePayload, filePayload],
+            createdAt: createdAt
+        ))
+
+        #expect(item.kind == .file)
+        #expect(item.summary == fileName)
+        #expect(item.signature.hasPrefix("file:"))
+    }
+}
+
 @Test func systemClipboardPayloadSourceAddsPngPreviewForPasteboardImages() throws {
     let pasteboard = NSPasteboard(name: NSPasteboard.Name("PasteXTests.\(UUID().uuidString)"))
     pasteboard.clearContents()
@@ -140,6 +170,34 @@ import PasteCore
     #expect(payloads.contains { $0.typeIdentifier == PasteboardTypeIdentifier.png } == false)
     #expect(item.kind == .file)
     #expect(item.summary == fileURL.lastPathComponent)
+}
+
+@Test func systemClipboardPayloadSourceKeepsMixedFileURLAndImagePayloadsAsFiles() throws {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("PasteXTests.\(UUID().uuidString)"))
+    pasteboard.clearContents()
+    let fileName = "Vacation.png"
+    let item = NSPasteboardItem()
+
+    #expect(item.setData(
+        Data("file:///Users/example/\(fileName)".utf8),
+        forType: NSPasteboard.PasteboardType(PasteboardTypeIdentifier.fileURL)
+    ))
+    #expect(item.setData(
+        try makePNGData(width: 2, height: 2),
+        forType: NSPasteboard.PasteboardType(PasteboardTypeIdentifier.png)
+    ))
+    #expect(pasteboard.writeObjects([item]))
+
+    let source = SystemClipboardPayloadSource(pasteboard: pasteboard)
+    let payloads = source.currentPayloads()
+    let classifiedItem = try #require(ClipboardClassifier().makeItem(
+        from: payloads,
+        createdAt: Date(timeIntervalSince1970: 28.5)
+    ))
+
+    #expect(payloads.first?.typeIdentifier == PasteboardTypeIdentifier.fileURL)
+    #expect(classifiedItem.kind == .file)
+    #expect(classifiedItem.summary == fileName)
 }
 
 @Test func classifierIgnoresEmptyPayloads() {

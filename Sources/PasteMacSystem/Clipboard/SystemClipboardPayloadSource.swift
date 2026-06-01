@@ -16,10 +16,9 @@ public final class SystemClipboardPayloadSource: ClipboardPayloadSource {
     public func currentPayloads() -> [ClipboardPayload] {
         var payloads = pasteboard.pasteboardItems?.flatMap(Self.payloads(from:)) ?? []
         let hasFileURL = payloads.contains { $0.typeIdentifier == PasteboardTypeIdentifier.fileURL }
-        let hasImageType = payloads.contains { ClipboardClassifier.isImageType($0.typeIdentifier) }
 
         if !payloads.contains(where: { $0.typeIdentifier == PasteboardTypeIdentifier.png }),
-           (!hasFileURL || hasImageType),
+           !hasFileURL,
            let imagePayload = Self.imagePreviewPayload(from: pasteboard) {
             payloads.append(imagePayload)
         }
@@ -70,11 +69,11 @@ public final class SystemClipboardPayloadSource: ClipboardPayloadSource {
     }
 
     private static func priority(for typeIdentifier: String) -> Int {
-        if ClipboardClassifier.isImageType(typeIdentifier) {
+        if typeIdentifier == PasteboardTypeIdentifier.fileURL {
             return 0
         }
 
-        if typeIdentifier == PasteboardTypeIdentifier.fileURL {
+        if ClipboardClassifier.isImageType(typeIdentifier) {
             return 1
         }
 
