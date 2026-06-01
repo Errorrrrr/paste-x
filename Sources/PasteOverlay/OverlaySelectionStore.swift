@@ -18,6 +18,41 @@ public struct OverlayPasteRequest: Equatable, Sendable {
     }
 }
 
+public enum OverlaySelectionSource: Equatable, Sendable {
+    case automatic
+    case mouse
+}
+
+public struct OverlaySelectionScrollRequest: Equatable, Sendable {
+    public let itemID: ClipboardItem.ID
+    public let delay: TimeInterval
+
+    public init(itemID: ClipboardItem.ID, delay: TimeInterval) {
+        self.itemID = itemID
+        self.delay = max(0, delay)
+    }
+}
+
+public struct OverlaySelectionScrollPolicy: Equatable, Sendable {
+    public let mouseSelectionDelay: TimeInterval
+
+    public init(mouseSelectionDelay: TimeInterval) {
+        self.mouseSelectionDelay = max(0, mouseSelectionDelay)
+    }
+
+    public func scrollRequest(
+        for itemID: ClipboardItem.ID?,
+        source: OverlaySelectionSource
+    ) -> OverlaySelectionScrollRequest? {
+        guard let itemID else {
+            return nil
+        }
+
+        let delay = source == .mouse ? mouseSelectionDelay : 0
+        return OverlaySelectionScrollRequest(itemID: itemID, delay: delay)
+    }
+}
+
 @MainActor
 public final class OverlaySelectionStore: ObservableObject {
     @Published public private(set) var items: [ClipboardItem]
@@ -25,6 +60,7 @@ public final class OverlaySelectionStore: ObservableObject {
     @Published public private(set) var feedbackMessage: String?
     @Published public private(set) var searchQuery = ""
     @Published public private(set) var isSearching = false
+    public private(set) var lastSelectionSource: OverlaySelectionSource = .automatic
 
     public var selectedItem: ClipboardItem? {
         guard let selectedItemID else {
@@ -54,6 +90,7 @@ public final class OverlaySelectionStore: ObservableObject {
 
     public func replaceItems(_ newItems: [ClipboardItem]) {
         let previousSelection = selectedItemID
+        lastSelectionSource = .automatic
         feedbackMessage = nil
         clearSearch()
         items = newItems
@@ -65,7 +102,7 @@ public final class OverlaySelectionStore: ObservableObject {
         }
     }
 
-    public func select(id: ClipboardItem.ID) {
+    public func select(id: ClipboardItem.ID, source: OverlaySelectionSource = .automatic) {
         guard selectedItemID != id else {
             return
         }
@@ -74,6 +111,7 @@ public final class OverlaySelectionStore: ObservableObject {
             return
         }
 
+        lastSelectionSource = source
         selectedItemID = id
     }
 
@@ -137,6 +175,7 @@ public final class OverlaySelectionStore: ObservableObject {
     private func normalizeSelectionForVisibleItems() {
         let visibleItems = visibleItems
         guard !visibleItems.isEmpty else {
+            lastSelectionSource = .automatic
             selectedItemID = nil
             return
         }
@@ -145,12 +184,14 @@ public final class OverlaySelectionStore: ObservableObject {
             return
         }
 
+        lastSelectionSource = .automatic
         selectedItemID = visibleItems.first?.id
     }
 
     private func moveSelection(by offset: Int) {
         let selectionItems = visibleItems
         guard !selectionItems.isEmpty else {
+            lastSelectionSource = .automatic
             selectedItemID = nil
             return
         }
@@ -159,11 +200,13 @@ public final class OverlaySelectionStore: ObservableObject {
             let currentSelection = selectedItemID,
             let currentIndex = selectionItems.firstIndex(where: { $0.id == currentSelection })
         else {
+            lastSelectionSource = .automatic
             selectedItemID = selectionItems.first?.id
             return
         }
 
         let targetIndex = max(0, min(selectionItems.count - 1, currentIndex + offset))
+        lastSelectionSource = .automatic
         selectedItemID = selectionItems[targetIndex].id
     }
 }

@@ -1,3 +1,4 @@
+import AppKit
 import PasteCore
 import SwiftUI
 
@@ -13,6 +14,7 @@ public struct OverlayRootView: View {
     private let onPasteRequest: (OverlayPasteRequest) -> Void
     private let onMenuAction: (OverlayMenuAction) -> Void
     @FocusState private var isSearchFieldFocused: Bool
+    @State private var selectionScrollTask: Task<Void, Never>?
 
     public init(
         store: OverlaySelectionStore,
@@ -223,10 +225,10 @@ public struct OverlayRootView: View {
                             language: language,
                             isSelected: item.id == store.selectedItemID,
                             onSelect: {
-                                store.select(id: item.id)
+                                store.select(id: item.id, source: .mouse)
                             },
                             onPaste: {
-                                store.select(id: item.id)
+                                store.select(id: item.id, source: .mouse)
                                 requestPaste(trigger: .doubleClick)
                             }
                         )
@@ -239,13 +241,11 @@ public struct OverlayRootView: View {
                 .padding(.bottom, 28)
             }
             .onChange(of: store.selectedItemID) { _, newValue in
-                guard let newValue else {
-                    return
-                }
-
-                withAnimation(.easeOut(duration: 0.16)) {
-                    proxy.scrollTo(newValue, anchor: .center)
-                }
+                scheduleSelectionScroll(to: newValue, proxy: proxy)
+            }
+            .onDisappear {
+                selectionScrollTask?.cancel()
+                selectionScrollTask = nil
             }
         }
     }
@@ -278,6 +278,40 @@ public struct OverlayRootView: View {
         }
 
         onPasteRequest(request)
+    }
+
+    private func scheduleSelectionScroll(to itemID: ClipboardItem.ID?, proxy: ScrollViewProxy) {
+        selectionScrollTask?.cancel()
+        selectionScrollTask = nil
+
+        let policy = OverlaySelectionScrollPolicy(mouseSelectionDelay: NSEvent.doubleClickInterval)
+        guard let request = policy.scrollRequest(
+            for: itemID,
+            source: store.lastSelectionSource
+        ) else {
+            return
+        }
+
+        guard request.delay > 0 else {
+            scrollSelection(to: request.itemID, proxy: proxy)
+            return
+        }
+
+        selectionScrollTask = Task { @MainActor in
+            let nanoseconds = UInt64((request.delay * 1_000_000_000).rounded())
+            try? await Task.sleep(nanoseconds: nanoseconds)
+            guard !Task.isCancelled else {
+                return
+            }
+
+            scrollSelection(to: request.itemID, proxy: proxy)
+        }
+    }
+
+    private func scrollSelection(to itemID: ClipboardItem.ID, proxy: ScrollViewProxy) {
+        withAnimation(.easeOut(duration: 0.16)) {
+            proxy.scrollTo(itemID, anchor: .center)
+        }
     }
 
     private var strings: OverlayStrings {
