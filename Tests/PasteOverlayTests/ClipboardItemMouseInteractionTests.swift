@@ -5,7 +5,6 @@ import Testing
 @MainActor
 @Test func clipboardItemMouseViewDispatchesSingleClickToSelection() throws {
     let view = ClipboardItemMouseEventView(frame: NSRect(x: 0, y: 0, width: 248, height: 244))
-    view.singleClickDelay = 0
     var actions: [String] = []
     view.onSelect = { actions.append("select") }
     view.onPaste = { actions.append("paste") }
@@ -28,9 +27,8 @@ import Testing
 }
 
 @MainActor
-@Test func clipboardItemMouseViewCancelsPendingSelectionWhenDoubleClickCompletes() throws {
+@Test func clipboardItemMouseViewSelectsImmediatelyBeforeDoubleClickPaste() throws {
     let view = ClipboardItemMouseEventView(frame: NSRect(x: 0, y: 0, width: 248, height: 244))
-    view.singleClickDelay = 10
     var actions: [String] = []
     view.onSelect = { actions.append("select") }
     view.onPaste = { actions.append("paste") }
@@ -38,7 +36,7 @@ import Testing
     view.mouseDown(with: try makeMouseDown(clickCount: 1))
     view.mouseDown(with: try makeMouseDown(clickCount: 2))
 
-    #expect(actions == ["paste"])
+    #expect(actions == ["select", "paste"])
 }
 
 private func makeMouseDown(clickCount: Int) throws -> NSEvent {

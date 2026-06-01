@@ -315,17 +315,11 @@ private struct ClipboardItemMouseEventBridge: NSViewRepresentable {
         nsView.onSelect = onSelect
         nsView.onPaste = onPaste
     }
-
-    static func dismantleNSView(_ nsView: ClipboardItemMouseEventView, coordinator: ()) {
-        nsView.cancelPendingSelection()
-    }
 }
 
 final class ClipboardItemMouseEventView: NSView {
     var onSelect: () -> Void = {}
     var onPaste: () -> Void = {}
-    var singleClickDelay: TimeInterval = NSEvent.doubleClickInterval
-    private var pendingSelectWorkItem: DispatchWorkItem?
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
@@ -333,32 +327,10 @@ final class ClipboardItemMouseEventView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         if event.clickCount >= 2 {
-            cancelPendingSelection()
             onPaste()
         } else {
-            scheduleSelection()
-        }
-    }
-
-    private func scheduleSelection() {
-        cancelPendingSelection()
-
-        guard singleClickDelay > 0 else {
             onSelect()
-            return
         }
-
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.pendingSelectWorkItem = nil
-            self?.onSelect()
-        }
-        pendingSelectWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + singleClickDelay, execute: workItem)
-    }
-
-    func cancelPendingSelection() {
-        pendingSelectWorkItem?.cancel()
-        pendingSelectWorkItem = nil
     }
 }
 
