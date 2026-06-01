@@ -29,3 +29,39 @@ import Testing
     #expect(hiddenFrame.width == restingFrame.width)
     #expect(hiddenFrame.height == restingFrame.height)
 }
+
+@Test func outsideClickPolicyKeepsGlobalMouseDownInsidePanelOpen() {
+    let panelFrame = NSRect(x: 80, y: 40, width: 640, height: 336)
+
+    let isOutside = OverlayOutsideClickPolicy.isOutsidePanel(
+        panelFrame: panelFrame,
+        eventWindowIsPanel: false,
+        mouseLocation: NSPoint(x: 240, y: 120)
+    )
+
+    #expect(isOutside == false)
+}
+
+@Test func outsideClickPolicyDismissesGlobalMouseDownOutsidePanel() {
+    let panelFrame = NSRect(x: 80, y: 40, width: 640, height: 336)
+
+    let isOutside = OverlayOutsideClickPolicy.isOutsidePanel(
+        panelFrame: panelFrame,
+        eventWindowIsPanel: false,
+        mouseLocation: NSPoint(x: 40, y: 120)
+    )
+
+    #expect(isOutside == true)
+}
+
+@Test func outsideClickPolicyKeepsPanelWindowEventsOpen() {
+    let panelFrame = NSRect(x: 80, y: 40, width: 640, height: 336)
+
+    let isOutside = OverlayOutsideClickPolicy.isOutsidePanel(
+        panelFrame: panelFrame,
+        eventWindowIsPanel: true,
+        mouseLocation: NSPoint(x: 40, y: 120)
+    )
+
+    #expect(isOutside == false)
+}
