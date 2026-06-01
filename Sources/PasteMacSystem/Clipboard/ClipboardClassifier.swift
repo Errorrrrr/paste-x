@@ -1,5 +1,7 @@
+import AppKit
 import Foundation
 import PasteCore
+import UniformTypeIdentifiers
 
 public enum PasteboardTypeIdentifier {
     public static let plainText = "public.utf8-plain-text"
@@ -8,6 +10,8 @@ public enum PasteboardTypeIdentifier {
     public static let fileURL = "public.file-url"
     public static let png = "public.png"
     public static let tiff = "public.tiff"
+    public static let jpeg = "public.jpeg"
+    public static let heic = "public.heic"
 }
 
 public final class ClipboardClassifier: ClipboardClassifying {
@@ -38,7 +42,7 @@ public final class ClipboardClassifier: ClipboardClassifying {
             return .file
         }
 
-        if payloads.contains(where: { Self.imageTypes.contains($0.typeIdentifier) }) {
+        if payloads.contains(where: { Self.isImageType($0.typeIdentifier) }) {
             return .image
         }
 
@@ -66,7 +70,7 @@ public final class ClipboardClassifier: ClipboardClassifying {
         case .file:
             return clippedSummary(fileName(in: payloads) ?? "File", fallback: "File")
         case .image:
-            return "Image"
+            return imageSummary(in: payloads) ?? "Image"
         case .unknown:
             return "Unsupported clipboard data"
         }
@@ -103,6 +107,36 @@ public final class ClipboardClassifier: ClipboardClassifying {
         return URL(fileURLWithPath: rawFile).lastPathComponent
     }
 
+    private func imageSummary(in payloads: [ClipboardPayload]) -> String? {
+        for payload in payloads where Self.isImageType(payload.typeIdentifier) {
+            guard let size = Self.imagePixelSize(from: payload.data) else {
+                continue
+            }
+
+            return "Image \(size.width) x \(size.height)"
+        }
+
+        return nil
+    }
+
+    private static func imagePixelSize(from data: Data) -> (width: Int, height: Int)? {
+        if let bitmap = NSBitmapImageRep(data: data),
+           bitmap.pixelsWide > 0,
+           bitmap.pixelsHigh > 0 {
+            return (bitmap.pixelsWide, bitmap.pixelsHigh)
+        }
+
+        guard let image = NSImage(data: data), image.isValid else {
+            return nil
+        }
+
+        guard let representation = image.representations.first(where: { $0.pixelsWide > 0 && $0.pixelsHigh > 0 }) else {
+            return nil
+        }
+
+        return (representation.pixelsWide, representation.pixelsHigh)
+    }
+
     private func clippedSummary(_ value: String, fallback: String) -> String {
         let normalized = value
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -123,6 +157,18 @@ public final class ClipboardClassifier: ClipboardClassifying {
         return scheme == "http" || scheme == "https"
     }
 
+    static func isImageType(_ typeIdentifier: String) -> Bool {
+        if imageTypes.contains(typeIdentifier) {
+            return true
+        }
+
+        guard let type = UTType(typeIdentifier) else {
+            return false
+        }
+
+        return type.conforms(to: .image)
+    }
+
     private static let textTypes: Set<String> = [
         PasteboardTypeIdentifier.plainText,
         PasteboardTypeIdentifier.legacyPlainText
@@ -130,6 +176,8 @@ public final class ClipboardClassifier: ClipboardClassifying {
 
     private static let imageTypes: Set<String> = [
         PasteboardTypeIdentifier.png,
-        PasteboardTypeIdentifier.tiff
+        PasteboardTypeIdentifier.tiff,
+        PasteboardTypeIdentifier.jpeg,
+        PasteboardTypeIdentifier.heic
     ]
 }

@@ -27,6 +27,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
     private let pasteCoordinator: SendablePasteCoordinator
     private let permissionPresenter: PermissionPresenting?
     private let markSelfWrite: (ClipboardItem) -> Void
+    private let cancelSelfWrite: (ClipboardItem) -> Void
     private let onMenuAction: (OverlayMenuAction) -> Void
     private var language: AppLanguage
     private var currentTarget: PasteTarget?
@@ -38,6 +39,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
         permissionPresenter: PermissionPresenting?,
         language: AppLanguage = .english,
         markSelfWrite: @escaping (ClipboardItem) -> Void,
+        cancelSelfWrite: @escaping (ClipboardItem) -> Void = { _ in },
         onMenuAction: @escaping (OverlayMenuAction) -> Void = { _ in }
     ) {
         let relay = OverlayPasteRequestRelay()
@@ -57,6 +59,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
             permissionPresenter: permissionPresenter,
             language: language,
             markSelfWrite: markSelfWrite,
+            cancelSelfWrite: cancelSelfWrite,
             onMenuAction: onMenuAction
         )
 
@@ -74,12 +77,14 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
         permissionPresenter: PermissionPresenting?,
         language: AppLanguage = .english,
         markSelfWrite: @escaping (ClipboardItem) -> Void,
+        cancelSelfWrite: @escaping (ClipboardItem) -> Void = { _ in },
         onMenuAction: @escaping (OverlayMenuAction) -> Void = { _ in }
     ) {
         self.windowController = windowController
         self.pasteCoordinator = SendablePasteCoordinator(base: pasteCoordinator)
         self.permissionPresenter = permissionPresenter
         self.markSelfWrite = markSelfWrite
+        self.cancelSelfWrite = cancelSelfWrite
         self.onMenuAction = onMenuAction
         self.language = language
     }
@@ -125,11 +130,16 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
         _ = permissionPresenter?.ensureAccessibilityPermission()
 
         let coordinator = pasteCoordinator
+        let expectsPasteboardWrite = !request.item.payloads.isEmpty
+        if expectsPasteboardWrite {
+            markSelfWrite(request.item)
+        }
+
         let result = await coordinator.paste(request.item, to: currentTarget)
         lastPasteResult = result
 
-        if result.wrotePasteboard {
-            markSelfWrite(request.item)
+        if expectsPasteboardWrite && !result.wrotePasteboard {
+            cancelSelfWrite(request.item)
         }
 
         if let feedbackMessage = result.copyOnlyFeedbackMessage(language: language) {
