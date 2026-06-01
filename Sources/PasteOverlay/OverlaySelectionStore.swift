@@ -66,6 +66,10 @@ public final class OverlaySelectionStore: ObservableObject {
     }
 
     public func select(id: ClipboardItem.ID) {
+        guard selectedItemID != id else {
+            return
+        }
+
         guard items.contains(where: { $0.id == id }) else {
             return
         }

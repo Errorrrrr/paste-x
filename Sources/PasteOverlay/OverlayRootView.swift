@@ -230,6 +230,7 @@ public struct OverlayRootView: View {
                                 requestPaste(trigger: .doubleClick)
                             }
                         )
+                        .equatable()
                         .id(item.id)
                     }
                 }
