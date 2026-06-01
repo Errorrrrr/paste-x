@@ -68,6 +68,11 @@ public final class ClipboardMonitor: NSObject, ClipboardMonitoring {
         pendingSelfWriteSignature = signature
     }
 
+    public func cancelSelfWrite(signature: String) {
+        guard pendingSelfWriteSignature == signature else { return }
+        pendingSelfWriteSignature = nil
+    }
+
     public func poll(createdAt: Date = Date()) {
         let changeCount = source.currentChangeCount()
         guard changeCount != lastChangeCount else { return }
