@@ -139,11 +139,33 @@ public struct ClipboardItemView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .file:
+            let preview = ClipboardImagePreview.makeFromFilePayloads(item.payloads)
+
             VStack(spacing: 12) {
                 Spacer(minLength: 0)
 
-                FileThumbnailView()
-                    .frame(width: 82, height: 110)
+                if let preview {
+                    ZStack {
+                        CheckerboardView()
+
+                        Image(nsImage: preview.image)
+                            .resizable()
+                            .interpolation(.medium)
+                            .antialiased(true)
+                            .scaledToFit()
+                            .padding(10)
+                    }
+                    .frame(width: 128, height: 110)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color(nsColor: .separatorColor).opacity(0.18), lineWidth: 1)
+                    )
+                    .accessibilityLabel(imagePreviewAccessibilityLabel)
+                } else {
+                    FileThumbnailView()
+                        .frame(width: 82, height: 110)
+                }
 
                 Spacer(minLength: 0)
 
@@ -267,6 +289,15 @@ public struct ClipboardItemView: View {
 
     private var imagePreviewAccessibilityLabel: String {
         language == .english ? "Image preview" : "图片预览"
+    }
+}
+
+extension ClipboardItemView: @preconcurrency Equatable {
+    public static func == (lhs: ClipboardItemView, rhs: ClipboardItemView) -> Bool {
+        lhs.item == rhs.item
+            && lhs.displayIndex == rhs.displayIndex
+            && lhs.language == rhs.language
+            && lhs.isSelected == rhs.isSelected
     }
 }
 

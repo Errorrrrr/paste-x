@@ -28,6 +28,24 @@ import Testing
 }
 
 @MainActor
+@Test func selectingCurrentItemDoesNotPublishRedundantSelectionChange() throws {
+    let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 150))
+    let store = OverlaySelectionStore(items: Array(items.prefix(2)))
+    var changeCount = 0
+    let cancellable = store.objectWillChange.sink {
+        changeCount += 1
+    }
+
+    store.select(id: items[0].id)
+    #expect(changeCount == 0)
+
+    store.select(id: items[1].id)
+    #expect(changeCount == 1)
+
+    _ = cancellable
+}
+
+@MainActor
 @Test func selectionRefreshPreservesVisibleSelectionOrFallsBackToFirst() throws {
     let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 200))
     let store = OverlaySelectionStore(items: Array(items.prefix(3)))
