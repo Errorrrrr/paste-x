@@ -25,9 +25,24 @@ import Testing
     let restingFrame = NSRect(x: 0, y: 0, width: 1440, height: 336)
     let hiddenFrame = OverlayPanelGeometry.hiddenFrame(from: restingFrame)
 
-    #expect(hiddenFrame.minY == -44)
+    #expect(hiddenFrame.minY == -72)
     #expect(hiddenFrame.width == restingFrame.width)
     #expect(hiddenFrame.height == restingFrame.height)
+}
+
+@MainActor
+@Test func overlayPanelPresentationKeepsPanelVisibleWhenAppDeactivates() {
+    let panel = NSPanel(
+        contentRect: NSRect(x: 0, y: 0, width: 960, height: 336),
+        styleMask: [.borderless],
+        backing: .buffered,
+        defer: false
+    )
+
+    OverlayPanelPresentation.configure(panel)
+
+    #expect(panel.hidesOnDeactivate == false)
+    #expect(panel.animationBehavior == .none)
 }
 
 @Test func outsideClickPolicyKeepsGlobalMouseDownInsidePanelOpen() {
