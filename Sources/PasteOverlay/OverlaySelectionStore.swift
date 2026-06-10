@@ -60,6 +60,7 @@ public final class OverlaySelectionStore: ObservableObject {
     @Published public private(set) var feedbackMessage: String?
     @Published public private(set) var searchQuery = ""
     @Published public private(set) var isSearching = false
+    @Published public private(set) var presentationRevision = 0
     public private(set) var lastSelectionSource: OverlaySelectionSource = .automatic
 
     public var selectedItem: ClipboardItem? {
@@ -89,17 +90,12 @@ public final class OverlaySelectionStore: ObservableObject {
     }
 
     public func replaceItems(_ newItems: [ClipboardItem]) {
-        let previousSelection = selectedItemID
         lastSelectionSource = .automatic
         feedbackMessage = nil
         clearSearch()
         items = newItems
-
-        if let previousSelection, newItems.contains(where: { $0.id == previousSelection }) {
-            selectedItemID = previousSelection
-        } else {
-            selectedItemID = newItems.first?.id
-        }
+        selectedItemID = newItems.first?.id
+        presentationRevision += 1
     }
 
     public func select(id: ClipboardItem.ID, source: OverlaySelectionSource = .automatic) {

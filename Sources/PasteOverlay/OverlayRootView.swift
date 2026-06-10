@@ -243,6 +243,12 @@ public struct OverlayRootView: View {
             .onChange(of: store.selectedItemID) { _, newValue in
                 scheduleSelectionScroll(to: newValue, proxy: proxy)
             }
+            .onChange(of: store.presentationRevision) { _, _ in
+                schedulePresentationScroll(proxy: proxy)
+            }
+            .onAppear {
+                schedulePresentationScroll(proxy: proxy)
+            }
             .onDisappear {
                 selectionScrollTask?.cancel()
                 selectionScrollTask = nil
@@ -280,6 +286,24 @@ public struct OverlayRootView: View {
         onPasteRequest(request)
     }
 
+    private func schedulePresentationScroll(proxy: ScrollViewProxy) {
+        selectionScrollTask?.cancel()
+        selectionScrollTask = nil
+
+        guard let firstItemID = store.visibleItems.first?.id else {
+            return
+        }
+
+        selectionScrollTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else {
+                return
+            }
+
+            scrollItem(firstItemID, anchor: .leading, proxy: proxy)
+        }
+    }
+
     private func scheduleSelectionScroll(to itemID: ClipboardItem.ID?, proxy: ScrollViewProxy) {
         selectionScrollTask?.cancel()
         selectionScrollTask = nil
@@ -309,8 +333,12 @@ public struct OverlayRootView: View {
     }
 
     private func scrollSelection(to itemID: ClipboardItem.ID, proxy: ScrollViewProxy) {
+        scrollItem(itemID, anchor: .center, proxy: proxy)
+    }
+
+    private func scrollItem(_ itemID: ClipboardItem.ID, anchor: UnitPoint, proxy: ScrollViewProxy) {
         withAnimation(.easeOut(duration: 0.16)) {
-            proxy.scrollTo(itemID, anchor: .center)
+            proxy.scrollTo(itemID, anchor: anchor)
         }
     }
 

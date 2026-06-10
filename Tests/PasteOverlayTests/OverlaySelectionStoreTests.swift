@@ -46,19 +46,23 @@ import Testing
 }
 
 @MainActor
-@Test func selectionRefreshPreservesVisibleSelectionOrFallsBackToFirst() throws {
+@Test func selectionRefreshResetsToFirstItemOnEveryPresentation() throws {
     let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 200))
     let store = OverlaySelectionStore(items: Array(items.prefix(3)))
     store.select(id: items[1].id)
+    let initialRevision = store.presentationRevision
 
     store.replaceItems([items[2], items[1], items[0]])
-    #expect(store.selectedItem?.id == items[1].id)
+    #expect(store.selectedItem?.id == items[2].id)
+    #expect(store.presentationRevision == initialRevision + 1)
 
     store.replaceItems([items[3], items[4]])
     #expect(store.selectedItem?.id == items[3].id)
+    #expect(store.presentationRevision == initialRevision + 2)
 
     store.replaceItems([])
     #expect(store.selectedItem == nil)
+    #expect(store.presentationRevision == initialRevision + 3)
 }
 
 @MainActor

@@ -115,7 +115,7 @@ public final class ClipboardAssistantApp {
         apply(settings: newSettings)
     }
 
-    private func registerActiveShortcut() -> Result<Void, HotKeyError> {
+    func registerActiveShortcut() -> Result<Void, HotKeyError> {
         let result = register(shortcut: shortcut)
 
         switch result {
