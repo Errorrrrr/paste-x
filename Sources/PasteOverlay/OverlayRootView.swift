@@ -255,6 +255,7 @@ public struct OverlayRootView: View {
                 selectionScrollTask = nil
             }
         }
+        .id(OverlayPresentationScrollPolicy().scrollViewIdentity(presentationRevision: store.presentationRevision))
     }
 
     private func feedbackBanner(_ message: String) -> some View {
@@ -291,7 +292,8 @@ public struct OverlayRootView: View {
         selectionScrollTask?.cancel()
         selectionScrollTask = nil
 
-        guard let target = OverlayPresentationScrollPolicy().initialTarget(visibleItems: store.visibleItems) else {
+        let policy = OverlayPresentationScrollPolicy()
+        guard let target = policy.initialTarget(visibleItems: store.visibleItems) else {
             return
         }
 
@@ -301,7 +303,7 @@ public struct OverlayRootView: View {
                 return
             }
 
-            scrollTarget(target, anchor: .leading, proxy: proxy)
+            scrollTarget(target, anchor: .leading, proxy: proxy, animated: policy.animatesInitialScroll)
         }
     }
 
@@ -337,7 +339,21 @@ public struct OverlayRootView: View {
         scrollTarget(.item(itemID), anchor: .center, proxy: proxy)
     }
 
-    private func scrollTarget(_ target: OverlayScrollTarget, anchor: UnitPoint, proxy: ScrollViewProxy) {
+    private func scrollTarget(
+        _ target: OverlayScrollTarget,
+        anchor: UnitPoint,
+        proxy: ScrollViewProxy,
+        animated: Bool = true
+    ) {
+        guard animated else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                proxy.scrollTo(target, anchor: anchor)
+            }
+            return
+        }
+
         withAnimation(.easeOut(duration: 0.16)) {
             proxy.scrollTo(target, anchor: anchor)
         }
@@ -354,6 +370,12 @@ enum OverlayScrollTarget: Hashable, Sendable {
 }
 
 struct OverlayPresentationScrollPolicy: Equatable, Sendable {
+    let animatesInitialScroll = false
+
+    func scrollViewIdentity(presentationRevision: Int) -> Int {
+        presentationRevision
+    }
+
     func initialTarget(visibleItems: [ClipboardItem]) -> OverlayScrollTarget? {
         guard !visibleItems.isEmpty else {
             return nil

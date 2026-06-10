@@ -19,6 +19,7 @@ public struct OverlayPasteRequest: Equatable, Sendable {
 }
 
 public enum OverlaySelectionSource: Equatable, Sendable {
+    case presentation
     case automatic
     case mouse
 }
@@ -45,6 +46,10 @@ public struct OverlaySelectionScrollPolicy: Equatable, Sendable {
         source: OverlaySelectionSource
     ) -> OverlaySelectionScrollRequest? {
         guard let itemID else {
+            return nil
+        }
+
+        guard source != .presentation else {
             return nil
         }
 
@@ -90,7 +95,7 @@ public final class OverlaySelectionStore: ObservableObject {
     }
 
     public func replaceItems(_ newItems: [ClipboardItem]) {
-        lastSelectionSource = .automatic
+        lastSelectionSource = .presentation
         feedbackMessage = nil
         clearSearch()
         items = newItems

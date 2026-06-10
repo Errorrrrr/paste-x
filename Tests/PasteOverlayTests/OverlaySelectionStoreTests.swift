@@ -75,6 +75,25 @@ import Testing
     #expect(OverlayContentLayout.itemStripHorizontalInset > 0)
     #expect(target == .contentLeadingInset)
     #expect(target != .item(items[0].id))
+    #expect(policy.animatesInitialScroll == false)
+    #expect(policy.scrollViewIdentity(presentationRevision: 1) != policy.scrollViewIdentity(presentationRevision: 2))
+}
+
+@MainActor
+@Test func presentationRefreshDoesNotRequestSelectionScrollFromResetSelection() throws {
+    let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 250))
+    let store = OverlaySelectionStore(items: Array(items.prefix(3)))
+    store.select(id: items[2].id)
+
+    store.replaceItems(Array(items.prefix(3)))
+
+    let request = OverlaySelectionScrollPolicy(mouseSelectionDelay: 0.5).scrollRequest(
+        for: store.selectedItemID,
+        source: store.lastSelectionSource
+    )
+    #expect(store.selectedItemID == items[0].id)
+    #expect(store.lastSelectionSource == .presentation)
+    #expect(request == nil)
 }
 
 @MainActor
