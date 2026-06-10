@@ -217,7 +217,7 @@ public struct OverlayRootView: View {
     private var itemStrip: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 20) {
+                HStack(alignment: .top, spacing: OverlayContentLayout.itemSpacing) {
                     ForEach(Array(store.visibleItems.enumerated()), id: \.element.id) { index, item in
                         ClipboardItemView(
                             item: item,
@@ -233,12 +233,13 @@ public struct OverlayRootView: View {
                             }
                         )
                         .equatable()
-                        .id(item.id)
+                        .id(OverlayScrollTarget.item(item.id))
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OverlayContentLayout.itemStripHorizontalInset)
                 .padding(.top, 2)
                 .padding(.bottom, 28)
+                .id(OverlayScrollTarget.contentLeadingInset)
             }
             .onChange(of: store.selectedItemID) { _, newValue in
                 scheduleSelectionScroll(to: newValue, proxy: proxy)
@@ -290,7 +291,7 @@ public struct OverlayRootView: View {
         selectionScrollTask?.cancel()
         selectionScrollTask = nil
 
-        guard let firstItemID = store.visibleItems.first?.id else {
+        guard let target = OverlayPresentationScrollPolicy().initialTarget(visibleItems: store.visibleItems) else {
             return
         }
 
@@ -300,7 +301,7 @@ public struct OverlayRootView: View {
                 return
             }
 
-            scrollItem(firstItemID, anchor: .leading, proxy: proxy)
+            scrollTarget(target, anchor: .leading, proxy: proxy)
         }
     }
 
@@ -333,18 +334,38 @@ public struct OverlayRootView: View {
     }
 
     private func scrollSelection(to itemID: ClipboardItem.ID, proxy: ScrollViewProxy) {
-        scrollItem(itemID, anchor: .center, proxy: proxy)
+        scrollTarget(.item(itemID), anchor: .center, proxy: proxy)
     }
 
-    private func scrollItem(_ itemID: ClipboardItem.ID, anchor: UnitPoint, proxy: ScrollViewProxy) {
+    private func scrollTarget(_ target: OverlayScrollTarget, anchor: UnitPoint, proxy: ScrollViewProxy) {
         withAnimation(.easeOut(duration: 0.16)) {
-            proxy.scrollTo(itemID, anchor: anchor)
+            proxy.scrollTo(target, anchor: anchor)
         }
     }
 
     private var strings: OverlayStrings {
         OverlayStrings(language: language)
     }
+}
+
+enum OverlayScrollTarget: Hashable, Sendable {
+    case contentLeadingInset
+    case item(ClipboardItem.ID)
+}
+
+struct OverlayPresentationScrollPolicy: Equatable, Sendable {
+    func initialTarget(visibleItems: [ClipboardItem]) -> OverlayScrollTarget? {
+        guard !visibleItems.isEmpty else {
+            return nil
+        }
+
+        return .contentLeadingInset
+    }
+}
+
+enum OverlayContentLayout {
+    static let itemSpacing: CGFloat = 20
+    static let itemStripHorizontalInset: CGFloat = 20
 }
 
 private struct OverlayStrings {

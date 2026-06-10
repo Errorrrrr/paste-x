@@ -66,6 +66,18 @@ import Testing
 }
 
 @MainActor
+@Test func presentationScrollTargetsContentLeadingInsetInsteadOfFirstItem() throws {
+    let items = Array(OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 225)).prefix(2))
+    let policy = OverlayPresentationScrollPolicy()
+
+    let target = policy.initialTarget(visibleItems: items)
+
+    #expect(OverlayContentLayout.itemStripHorizontalInset > 0)
+    #expect(target == .contentLeadingInset)
+    #expect(target != .item(items[0].id))
+}
+
+@MainActor
 @Test func pasteRequestReturnsSelectedItemAndTrigger() throws {
     let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 300))
     let store = OverlaySelectionStore(items: Array(items.prefix(2)))
