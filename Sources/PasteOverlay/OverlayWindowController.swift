@@ -119,6 +119,7 @@ public final class OverlayWindowController: NSObject {
         panel.isReleasedWhenClosed = false
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
+        OverlayPanelPresentation.configure(panel)
         panel.keyDownHandler = { [weak self] event in
             self?.handleKeyDown(event) ?? false
         }
@@ -199,6 +200,12 @@ public final class OverlayWindowController: NSObject {
         localMouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: Layout.outsideClickEventMask) { [weak self, weak panel] event in
             guard let panel else {
                 return event
+            }
+
+            if event.type == .leftMouseDown,
+               let mouseEventView = self?.hostingView?.firstClipboardItemMouseEventView(containingWindowPoint: event.locationInWindow) {
+                mouseEventView.handleMouseDown(event)
+                return nil
             }
 
             let isOutsidePanel = OverlayOutsideClickPolicy.isOutsidePanel(
@@ -358,9 +365,19 @@ private enum Layout {
     static let minimumPanelWidth: CGFloat = 760
     static let horizontalInset: CGFloat = 0
     static let bottomInset: CGFloat = 0
-    static let slideDistance: CGFloat = 44
-    static let animationDuration: TimeInterval = 0.18
+    static let slideDistance: CGFloat = 72
+    static let animationDuration: TimeInterval = 0.22
     static let outsideClickEventMask: NSEvent.EventTypeMask = [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+}
+
+enum OverlayPanelPresentation {
+    @MainActor
+    static func configure(_ panel: NSPanel) {
+        // Target app activation during paste deactivates PasteX; keep the panel visible
+        // long enough for the custom slide/fade dismissal instead of NSPanel auto-hide.
+        panel.hidesOnDeactivate = false
+        panel.animationBehavior = .none
+    }
 }
 
 enum OverlayPanelGeometry {

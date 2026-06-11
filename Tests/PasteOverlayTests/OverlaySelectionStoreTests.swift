@@ -46,19 +46,54 @@ import Testing
 }
 
 @MainActor
-@Test func selectionRefreshPreservesVisibleSelectionOrFallsBackToFirst() throws {
+@Test func selectionRefreshResetsToFirstItemOnEveryPresentation() throws {
     let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 200))
     let store = OverlaySelectionStore(items: Array(items.prefix(3)))
     store.select(id: items[1].id)
+    let initialRevision = store.presentationRevision
 
     store.replaceItems([items[2], items[1], items[0]])
-    #expect(store.selectedItem?.id == items[1].id)
+    #expect(store.selectedItem?.id == items[2].id)
+    #expect(store.presentationRevision == initialRevision + 1)
 
     store.replaceItems([items[3], items[4]])
     #expect(store.selectedItem?.id == items[3].id)
+    #expect(store.presentationRevision == initialRevision + 2)
 
     store.replaceItems([])
     #expect(store.selectedItem == nil)
+    #expect(store.presentationRevision == initialRevision + 3)
+}
+
+@MainActor
+@Test func presentationScrollTargetsContentLeadingInsetInsteadOfFirstItem() throws {
+    let items = Array(OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 225)).prefix(2))
+    let policy = OverlayPresentationScrollPolicy()
+
+    let target = policy.initialTarget(visibleItems: items)
+
+    #expect(OverlayContentLayout.itemStripHorizontalInset > 0)
+    #expect(target == .contentLeadingInset)
+    #expect(target != .item(items[0].id))
+    #expect(policy.animatesInitialScroll == false)
+    #expect(policy.scrollViewIdentity(presentationRevision: 1) != policy.scrollViewIdentity(presentationRevision: 2))
+}
+
+@MainActor
+@Test func presentationRefreshDoesNotRequestSelectionScrollFromResetSelection() throws {
+    let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 250))
+    let store = OverlaySelectionStore(items: Array(items.prefix(3)))
+    store.select(id: items[2].id)
+
+    store.replaceItems(Array(items.prefix(3)))
+
+    let request = OverlaySelectionScrollPolicy(mouseSelectionDelay: 0.5).scrollRequest(
+        for: store.selectedItemID,
+        source: store.lastSelectionSource
+    )
+    #expect(store.selectedItemID == items[0].id)
+    #expect(store.lastSelectionSource == .presentation)
+    #expect(request == nil)
 }
 
 @MainActor

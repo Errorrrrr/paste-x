@@ -113,6 +113,16 @@ import PasteCore
     )) == .toggleOverlay)
 }
 
+@Test func statusItemPlainLeftClickRoutesToToggleOverlayEntryPoint() {
+    let route = StatusItemClickRouter.route(for: StatusItemClickEvent(
+        type: .leftMouseDown,
+        modifierFlags: [],
+        buttonNumber: 0
+    ))
+
+    #expect(route == .toggleOverlay)
+}
+
 @Test func hotKeyManagerUnregistersExistingShortcutBeforeReplacingIt() {
     let backend = FakeHotKeyBackend()
     let manager = HotKeyManager(backend: backend)

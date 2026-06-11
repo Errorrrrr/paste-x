@@ -217,7 +217,7 @@ public struct OverlayRootView: View {
     private var itemStrip: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 20) {
+                HStack(alignment: .top, spacing: OverlayContentLayout.itemSpacing) {
                     ForEach(Array(store.visibleItems.enumerated()), id: \.element.id) { index, item in
                         ClipboardItemView(
                             item: item,
@@ -233,21 +233,29 @@ public struct OverlayRootView: View {
                             }
                         )
                         .equatable()
-                        .id(item.id)
+                        .id(OverlayScrollTarget.item(item.id))
                     }
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, OverlayContentLayout.itemStripHorizontalInset)
                 .padding(.top, 2)
                 .padding(.bottom, 28)
+                .id(OverlayScrollTarget.contentLeadingInset)
             }
             .onChange(of: store.selectedItemID) { _, newValue in
                 scheduleSelectionScroll(to: newValue, proxy: proxy)
+            }
+            .onChange(of: store.presentationRevision) { _, _ in
+                schedulePresentationScroll(proxy: proxy)
+            }
+            .onAppear {
+                schedulePresentationScroll(proxy: proxy)
             }
             .onDisappear {
                 selectionScrollTask?.cancel()
                 selectionScrollTask = nil
             }
         }
+        .id(OverlayPresentationScrollPolicy().scrollViewIdentity(presentationRevision: store.presentationRevision))
     }
 
     private func feedbackBanner(_ message: String) -> some View {
@@ -280,6 +288,25 @@ public struct OverlayRootView: View {
         onPasteRequest(request)
     }
 
+    private func schedulePresentationScroll(proxy: ScrollViewProxy) {
+        selectionScrollTask?.cancel()
+        selectionScrollTask = nil
+
+        let policy = OverlayPresentationScrollPolicy()
+        guard let target = policy.initialTarget(visibleItems: store.visibleItems) else {
+            return
+        }
+
+        selectionScrollTask = Task { @MainActor in
+            await Task.yield()
+            guard !Task.isCancelled else {
+                return
+            }
+
+            scrollTarget(target, anchor: .leading, proxy: proxy, animated: policy.animatesInitialScroll)
+        }
+    }
+
     private func scheduleSelectionScroll(to itemID: ClipboardItem.ID?, proxy: ScrollViewProxy) {
         selectionScrollTask?.cancel()
         selectionScrollTask = nil
@@ -309,14 +336,58 @@ public struct OverlayRootView: View {
     }
 
     private func scrollSelection(to itemID: ClipboardItem.ID, proxy: ScrollViewProxy) {
+        scrollTarget(.item(itemID), anchor: .center, proxy: proxy)
+    }
+
+    private func scrollTarget(
+        _ target: OverlayScrollTarget,
+        anchor: UnitPoint,
+        proxy: ScrollViewProxy,
+        animated: Bool = true
+    ) {
+        guard animated else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                proxy.scrollTo(target, anchor: anchor)
+            }
+            return
+        }
+
         withAnimation(.easeOut(duration: 0.16)) {
-            proxy.scrollTo(itemID, anchor: .center)
+            proxy.scrollTo(target, anchor: anchor)
         }
     }
 
     private var strings: OverlayStrings {
         OverlayStrings(language: language)
     }
+}
+
+enum OverlayScrollTarget: Hashable, Sendable {
+    case contentLeadingInset
+    case item(ClipboardItem.ID)
+}
+
+struct OverlayPresentationScrollPolicy: Equatable, Sendable {
+    let animatesInitialScroll = false
+
+    func scrollViewIdentity(presentationRevision: Int) -> Int {
+        presentationRevision
+    }
+
+    func initialTarget(visibleItems: [ClipboardItem]) -> OverlayScrollTarget? {
+        guard !visibleItems.isEmpty else {
+            return nil
+        }
+
+        return .contentLeadingInset
+    }
+}
+
+enum OverlayContentLayout {
+    static let itemSpacing: CGFloat = 20
+    static let itemStripHorizontalInset: CGFloat = 20
 }
 
 private struct OverlayStrings {

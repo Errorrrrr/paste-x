@@ -119,6 +119,32 @@ import PasteCore
 }
 
 @MainActor
+@Test func clipboardAssistantRegisteredHotKeyUsesToggleOverlayEntryPoint() async {
+    let item = makePasteItem()
+    let target = makeTarget()
+    let hotKeyManager = FakeHotKeyManager()
+    let overlay = FakeOverlayPresenter()
+    let focusTracker = FakeRefreshableFocusTracker(target: target)
+    let app = ClipboardAssistantApp(
+        hotKeyManager: hotKeyManager,
+        clipboardMonitor: FakeClipboardMonitor(),
+        historyStore: FakeClipboardHistory(items: [item]),
+        overlayPresenter: overlay,
+        focusTracker: focusTracker,
+        statusItemController: StatusItemController(toggleHandler: {})
+    )
+
+    let result = app.registerActiveShortcut()
+    hotKeyManager.fire()
+    await Task.yield()
+
+    #expect(result.isSuccess)
+    #expect(hotKeyManager.registeredShortcuts == [.defaultToggleOverlay])
+    #expect(focusTracker.refreshCount == 1)
+    #expect(overlay.toggles == [OverlayToggle(items: [item], target: target)])
+}
+
+@MainActor
 @Test func clipboardAssistantOpensSettingsAndPersistsUpdatedShortcut() {
     let hotKeyManager = FakeHotKeyManager()
     let settingsPresenter = FakeShortcutSettingsPresenter()
@@ -343,16 +369,24 @@ private final class FakeClipboardMonitor: ClipboardMonitoring {
 private final class FakeHotKeyManager: HotKeyManaging {
     var results: [Result<Void, HotKeyError>] = []
     private(set) var registeredShortcuts: [HotKeyShortcut] = []
+    private var handler: (@Sendable () -> Void)?
 
     func register(shortcut: HotKeyShortcut, handler: @escaping @Sendable () -> Void) -> Result<Void, HotKeyError> {
         registeredShortcuts.append(shortcut)
+        self.handler = handler
         if results.isEmpty {
             return .success(())
         }
         return results.removeFirst()
     }
 
-    func unregister() {}
+    func unregister() {
+        handler = nil
+    }
+
+    func fire() {
+        handler?()
+    }
 }
 
 @MainActor
