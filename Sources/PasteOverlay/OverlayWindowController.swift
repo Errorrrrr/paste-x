@@ -202,6 +202,12 @@ public final class OverlayWindowController: NSObject {
                 return event
             }
 
+            if event.type == .leftMouseDown,
+               let mouseEventView = self?.hostingView?.firstClipboardItemMouseEventView(containingWindowPoint: event.locationInWindow) {
+                mouseEventView.handleMouseDown(event)
+                return nil
+            }
+
             let isOutsidePanel = OverlayOutsideClickPolicy.isOutsidePanel(
                 panelFrame: panel.frame,
                 eventWindowIsPanel: event.window === panel,

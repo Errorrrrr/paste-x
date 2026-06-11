@@ -326,11 +326,40 @@ final class ClipboardItemMouseEventView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        handleMouseDown(event)
+    }
+
+    func handleMouseDown(_ event: NSEvent) {
         if event.clickCount >= 2 {
             onPaste()
         } else {
             onSelect()
         }
+    }
+}
+
+extension NSView {
+    func firstClipboardItemMouseEventView(containingWindowPoint windowPoint: NSPoint) -> ClipboardItemMouseEventView? {
+        guard !isHidden else {
+            return nil
+        }
+
+        let localPoint = convert(windowPoint, from: nil)
+        guard bounds.contains(localPoint) else {
+            return nil
+        }
+
+        if let mouseEventView = self as? ClipboardItemMouseEventView {
+            return mouseEventView
+        }
+
+        for subview in subviews.reversed() {
+            if let mouseEventView = subview.firstClipboardItemMouseEventView(containingWindowPoint: windowPoint) {
+                return mouseEventView
+            }
+        }
+
+        return nil
     }
 }
 
