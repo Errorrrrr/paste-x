@@ -97,6 +97,68 @@ import Testing
     #expect(deferredScrollIDs == [targetItem.id])
 }
 
+@MainActor
+@Test func mouseSingleClickStillSelectsItemAfterPresentationReset() throws {
+    let items = makeScrollableTextItems(count: 8)
+    let targetItem = items[5]
+    let store = OverlaySelectionStore(items: items)
+    let scrollPolicy = OverlaySelectionScrollPolicy(mouseSelectionDelay: 0.5)
+    let view = ClipboardItemMouseEventView(frame: NSRect(x: 0, y: 0, width: 248, height: 244))
+    var immediateScrollIDs: [ClipboardItem.ID] = []
+    var deferredScrollIDs: [ClipboardItem.ID] = []
+
+    store.select(id: items[7].id)
+    store.replaceItems(items)
+
+    view.onSelect = {
+        store.select(id: targetItem.id, source: .mouse)
+        guard let request = scrollPolicy.scrollRequest(
+            for: store.selectedItemID,
+            source: store.lastSelectionSource
+        ) else {
+            return
+        }
+
+        if request.delay > 0 {
+            deferredScrollIDs.append(request.itemID)
+        } else {
+            immediateScrollIDs.append(request.itemID)
+        }
+    }
+
+    view.mouseDown(with: try makeMouseDown(clickCount: 1))
+
+    #expect(store.selectedItemID == targetItem.id)
+    #expect(store.lastSelectionSource == .mouse)
+    #expect(immediateScrollIDs.isEmpty)
+    #expect(deferredScrollIDs == [targetItem.id])
+}
+
+@MainActor
+@Test func mouseDoubleClickAfterPresentationResetPastesClickedItem() throws {
+    let items = makeScrollableTextItems(count: 8)
+    let targetItem = items[6]
+    let store = OverlaySelectionStore(items: items)
+    let view = ClipboardItemMouseEventView(frame: NSRect(x: 0, y: 0, width: 248, height: 244))
+    var pasteRequests: [OverlayPasteRequest] = []
+
+    store.select(id: items[7].id)
+    store.replaceItems(items)
+
+    view.onPaste = {
+        store.select(id: targetItem.id, source: .mouse)
+        if let request = store.makePasteRequest(trigger: .doubleClick) {
+            pasteRequests.append(request)
+        }
+    }
+
+    view.mouseDown(with: try makeMouseDown(clickCount: 2))
+
+    #expect(store.selectedItemID == targetItem.id)
+    #expect(store.lastSelectionSource == .mouse)
+    #expect(pasteRequests == [OverlayPasteRequest(item: targetItem, trigger: .doubleClick)])
+}
+
 private func makeMouseDown(clickCount: Int) throws -> NSEvent {
     try #require(
         NSEvent.mouseEvent(
