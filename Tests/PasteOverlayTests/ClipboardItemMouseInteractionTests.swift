@@ -185,6 +185,58 @@ import Testing
     #expect(pasteRequests == [OverlayPasteRequest(item: targetItem, trigger: .doubleClick)])
 }
 
+@MainActor
+@Test func localMouseDownFromNonPanelWindowUsesOutsidePolicyWithoutCardBridge() throws {
+    let hostingView = makeMouseBridgeContainer()
+    var didSelect = false
+    let bridge = try #require(hostingView.firstDescendant(ofType: ClipboardItemMouseEventView.self))
+    bridge.onSelect = { didSelect = true }
+    var didRequestDismiss = false
+    let event = try makeMouseDown(
+        clickCount: 1,
+        location: NSPoint(x: 124, y: 122)
+    )
+
+    let routedEvent = OverlayLocalMouseDownRouter.route(
+        event,
+        panelFrame: NSRect(x: 100, y: 100, width: 640, height: 336),
+        eventWindowIsPanel: false,
+        hostingView: hostingView,
+        mouseLocation: NSPoint(x: 40, y: 40),
+        onOutsidePanelClick: { didRequestDismiss = true }
+    )
+
+    #expect(routedEvent === event)
+    #expect(didSelect == false)
+    #expect(didRequestDismiss)
+}
+
+@MainActor
+@Test func localMouseDownInsidePanelNonCardAreaIsNotConsumed() throws {
+    let hostingView = makeMouseBridgeContainer()
+    var didSelect = false
+    let bridge = try #require(hostingView.firstDescendant(ofType: ClipboardItemMouseEventView.self))
+    bridge.onSelect = { didSelect = true }
+    var didRequestDismiss = false
+    let event = try makeMouseDown(
+        clickCount: 1,
+        location: NSPoint(x: 300, y: 122)
+    )
+
+    let routedEvent = OverlayLocalMouseDownRouter.route(
+        event,
+        panelFrame: NSRect(x: 100, y: 100, width: 640, height: 336),
+        eventWindowIsPanel: true,
+        hostingView: hostingView,
+        mouseLocation: NSPoint(x: 40, y: 40),
+        onOutsidePanelClick: { didRequestDismiss = true }
+    )
+
+    #expect(routedEvent === event)
+    #expect(didSelect == false)
+    #expect(didRequestDismiss == false)
+}
+
 private extension NSView {
     func firstDescendant<T: NSView>(ofType type: T.Type) -> T? {
         if let typedSelf = self as? T {
@@ -201,11 +253,14 @@ private extension NSView {
     }
 }
 
-private func makeMouseDown(clickCount: Int) throws -> NSEvent {
+private func makeMouseDown(
+    clickCount: Int,
+    location: NSPoint = NSPoint(x: 40, y: 40)
+) throws -> NSEvent {
     try #require(
         NSEvent.mouseEvent(
             with: .leftMouseDown,
-            location: NSPoint(x: 40, y: 40),
+            location: location,
             modifierFlags: [],
             timestamp: 0,
             windowNumber: 0,
@@ -215,6 +270,14 @@ private func makeMouseDown(clickCount: Int) throws -> NSEvent {
             pressure: 1
         )
     )
+}
+
+@MainActor
+private func makeMouseBridgeContainer() -> NSView {
+    let container = NSView(frame: NSRect(x: 0, y: 0, width: 360, height: 244))
+    let bridge = ClipboardItemMouseEventView(frame: NSRect(x: 0, y: 0, width: 248, height: 244))
+    container.addSubview(bridge)
+    return container
 }
 
 private func makeScrollableTextItems(count: Int) -> [ClipboardItem] {

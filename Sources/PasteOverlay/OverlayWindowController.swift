@@ -202,24 +202,17 @@ public final class OverlayWindowController: NSObject {
                 return event
             }
 
-            if event.type == .leftMouseDown,
-               let mouseEventView = self?.hostingView?.firstClipboardItemMouseEventView(containingWindowPoint: event.locationInWindow) {
-                mouseEventView.handleMouseDown(event)
-                return nil
-            }
-
-            let isOutsidePanel = OverlayOutsideClickPolicy.isOutsidePanel(
+            return OverlayLocalMouseDownRouter.route(
+                event,
                 panelFrame: panel.frame,
                 eventWindowIsPanel: event.window === panel,
-                mouseLocation: NSEvent.mouseLocation
-            )
-            if isOutsidePanel {
-                Task { @MainActor in
-                    self?.hideOverlay()
+                hostingView: self?.hostingView,
+                onOutsidePanelClick: {
+                    Task { @MainActor in
+                        self?.hideOverlay()
+                    }
                 }
-            }
-
-            return event
+            )
         }
 
         globalMouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: Layout.outsideClickEventMask) { [weak self, weak panel] _ in
@@ -403,6 +396,36 @@ enum OverlayOutsideClickPolicy {
         mouseLocation: NSPoint
     ) -> Bool {
         !eventWindowIsPanel && !panelFrame.contains(mouseLocation)
+    }
+}
+
+enum OverlayLocalMouseDownRouter {
+    @MainActor
+    static func route(
+        _ event: NSEvent,
+        panelFrame: NSRect,
+        eventWindowIsPanel: Bool,
+        hostingView: NSView?,
+        mouseLocation: NSPoint = NSEvent.mouseLocation,
+        onOutsidePanelClick: () -> Void
+    ) -> NSEvent? {
+        if event.type == .leftMouseDown,
+           eventWindowIsPanel,
+           let mouseEventView = hostingView?.firstClipboardItemMouseEventView(containingWindowPoint: event.locationInWindow) {
+            mouseEventView.handleMouseDown(event)
+            return nil
+        }
+
+        let isOutsidePanel = OverlayOutsideClickPolicy.isOutsidePanel(
+            panelFrame: panelFrame,
+            eventWindowIsPanel: eventWindowIsPanel,
+            mouseLocation: mouseLocation
+        )
+        if isOutsidePanel {
+            onOutsidePanelClick()
+        }
+
+        return event
     }
 }
 
