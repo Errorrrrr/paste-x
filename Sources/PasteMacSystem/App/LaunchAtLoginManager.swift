@@ -22,8 +22,23 @@ public protocol LaunchAtLoginManaging: AnyObject {
     func setEnabled(_ enabled: Bool) -> Result<LaunchAtLoginStatus, LaunchAtLoginError>
 }
 
+protocol MainAppServiceManaging: AnyObject {
+    var status: SMAppService.Status { get }
+
+    func register() throws
+    func unregister() throws
+}
+
 public final class SMAppServiceLaunchAtLoginManager: LaunchAtLoginManaging {
-    public init() {}
+    private let service: MainAppServiceManaging
+
+    public convenience init() {
+        self.init(service: SMAppService.mainApp)
+    }
+
+    init(service: MainAppServiceManaging) {
+        self.service = service
+    }
 
     public func status() -> LaunchAtLoginStatus {
         serviceStatus()
@@ -40,9 +55,9 @@ public final class SMAppServiceLaunchAtLoginManager: LaunchAtLoginManaging {
 
         do {
             if enabled {
-                try SMAppService.mainApp.register()
+                try service.register()
             } else {
-                try SMAppService.mainApp.unregister()
+                try service.unregister()
             }
             return .success(serviceStatus())
         } catch {
@@ -51,7 +66,7 @@ public final class SMAppServiceLaunchAtLoginManager: LaunchAtLoginManaging {
     }
 
     private func serviceStatus() -> LaunchAtLoginStatus {
-        switch SMAppService.mainApp.status {
+        switch service.status {
         case .enabled:
             return .enabled
         case .notRegistered:
@@ -59,9 +74,11 @@ public final class SMAppServiceLaunchAtLoginManager: LaunchAtLoginManaging {
         case .requiresApproval:
             return .requiresApproval
         case .notFound:
-            return .unavailable("PasteX is not available as a login item from this bundle.")
+            return .disabled
         @unknown default:
             return .unavailable("PasteX login item status is not supported on this macOS version.")
         }
     }
 }
+
+extension SMAppService: MainAppServiceManaging {}
