@@ -13,6 +13,7 @@ public final class ClipboardAssistantApp {
     private let settingsPresenter: ShortcutSettingsPresenting?
     private let shortcutStore: ShortcutSettingsStoring?
     private let settingsStore: AppSettingsStoring?
+    private let launchAtLoginManager: LaunchAtLoginManaging?
     private var shortcut: HotKeyShortcut
     private var settings: AppSettings
 
@@ -26,6 +27,7 @@ public final class ClipboardAssistantApp {
         settingsPresenter: ShortcutSettingsPresenting? = nil,
         shortcutStore: ShortcutSettingsStoring? = nil,
         settingsStore: AppSettingsStoring? = nil,
+        launchAtLoginManager: LaunchAtLoginManaging? = nil,
         shortcut: HotKeyShortcut = .defaultToggleOverlay,
         settings: AppSettings = .default
     ) {
@@ -38,6 +40,7 @@ public final class ClipboardAssistantApp {
         self.settingsPresenter = settingsPresenter
         self.shortcutStore = shortcutStore
         self.settingsStore = settingsStore
+        self.launchAtLoginManager = launchAtLoginManager
         self.shortcut = shortcut
         self.settings = settings
         apply(settings: settings)
@@ -69,6 +72,7 @@ public final class ClipboardAssistantApp {
             currentShortcut: shortcut,
             defaultShortcut: .defaultToggleOverlay,
             currentSettings: settings,
+            launchAtLoginStatus: launchAtLoginManager?.status() ?? .unavailable(""),
             saveHandler: { [weak self] shortcut in
                 guard let self else {
                     return .failure(.systemFailure("PasteX is no longer running"))
@@ -78,6 +82,13 @@ public final class ClipboardAssistantApp {
             },
             settingsChangeHandler: { [weak self] settings in
                 self?.updateSettings(settings)
+            },
+            launchAtLoginChangeHandler: { [weak self] enabled in
+                guard let manager = self?.launchAtLoginManager else {
+                    return .failure(.unavailable(""))
+                }
+
+                return manager.setEnabled(enabled)
             }
         )
     }

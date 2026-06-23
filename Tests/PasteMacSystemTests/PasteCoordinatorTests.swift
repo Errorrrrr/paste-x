@@ -228,6 +228,53 @@ import PasteCore
 }
 
 @MainActor
+@Test func clipboardAssistantReadsLaunchAtLoginStatusEveryTimeSettingsOpen() {
+    let settingsPresenter = FakeShortcutSettingsPresenter()
+    let launchAtLoginManager = FakeLaunchAtLoginManager(statuses: [.disabled, .enabled])
+    let app = ClipboardAssistantApp(
+        hotKeyManager: FakeHotKeyManager(),
+        clipboardMonitor: FakeClipboardMonitor(),
+        historyStore: FakeClipboardHistory(items: []),
+        overlayPresenter: FakeOverlayPresenter(),
+        focusTracker: FakeRefreshableFocusTracker(target: makeTarget()),
+        statusItemController: StatusItemController(toggleHandler: {}),
+        settingsPresenter: settingsPresenter,
+        launchAtLoginManager: launchAtLoginManager
+    )
+
+    app.openSettings()
+    app.openSettings()
+
+    #expect(launchAtLoginManager.statusReadCount == 2)
+    #expect(settingsPresenter.launchAtLoginStatuses == [.disabled, .enabled])
+}
+
+@MainActor
+@Test func clipboardAssistantTogglesLaunchAtLoginThroughSettingsPresenter() {
+    let settingsPresenter = FakeShortcutSettingsPresenter()
+    let launchAtLoginManager = FakeLaunchAtLoginManager(statuses: [.disabled])
+    launchAtLoginManager.setResults = [.success(.enabled), .success(.disabled)]
+    let app = ClipboardAssistantApp(
+        hotKeyManager: FakeHotKeyManager(),
+        clipboardMonitor: FakeClipboardMonitor(),
+        historyStore: FakeClipboardHistory(items: []),
+        overlayPresenter: FakeOverlayPresenter(),
+        focusTracker: FakeRefreshableFocusTracker(target: makeTarget()),
+        statusItemController: StatusItemController(toggleHandler: {}),
+        settingsPresenter: settingsPresenter,
+        launchAtLoginManager: launchAtLoginManager
+    )
+
+    app.openSettings()
+    let enableResult = settingsPresenter.launchAtLoginChangeHandler?(true)
+    let disableResult = settingsPresenter.launchAtLoginChangeHandler?(false)
+
+    #expect(launchAtLoginManager.enabledRequests == [true, false])
+    #expect(enableResult == .success(.enabled))
+    #expect(disableResult == .success(.disabled))
+}
+
+@MainActor
 @Test func clipboardAssistantCloseOverlayHidesWindowWithoutStoppingApp() {
     let overlay = FakeOverlayPresenter()
     let app = ClipboardAssistantApp(
@@ -394,21 +441,54 @@ private final class FakeShortcutSettingsPresenter: ShortcutSettingsPresenting {
     private(set) var currentShortcut: HotKeyShortcut?
     private(set) var defaultShortcut: HotKeyShortcut?
     private(set) var currentSettings: AppSettings?
+    private(set) var launchAtLoginStatuses: [LaunchAtLoginStatus] = []
     private(set) var saveHandler: ((HotKeyShortcut) -> Result<Void, HotKeyError>)?
     private(set) var settingsChangeHandler: ((AppSettings) -> Void)?
+    private(set) var launchAtLoginChangeHandler: ((Bool) -> Result<LaunchAtLoginStatus, LaunchAtLoginError>)?
 
     func openSettings(
         currentShortcut: HotKeyShortcut,
         defaultShortcut: HotKeyShortcut,
         currentSettings: AppSettings,
+        launchAtLoginStatus: LaunchAtLoginStatus,
         saveHandler: @escaping (HotKeyShortcut) -> Result<Void, HotKeyError>,
-        settingsChangeHandler: @escaping (AppSettings) -> Void
+        settingsChangeHandler: @escaping (AppSettings) -> Void,
+        launchAtLoginChangeHandler: @escaping (Bool) -> Result<LaunchAtLoginStatus, LaunchAtLoginError>
     ) {
         self.currentShortcut = currentShortcut
         self.defaultShortcut = defaultShortcut
         self.currentSettings = currentSettings
+        self.launchAtLoginStatuses.append(launchAtLoginStatus)
         self.saveHandler = saveHandler
         self.settingsChangeHandler = settingsChangeHandler
+        self.launchAtLoginChangeHandler = launchAtLoginChangeHandler
+    }
+}
+
+private final class FakeLaunchAtLoginManager: LaunchAtLoginManaging {
+    var statuses: [LaunchAtLoginStatus]
+    var setResults: [Result<LaunchAtLoginStatus, LaunchAtLoginError>] = []
+    private(set) var statusReadCount = 0
+    private(set) var enabledRequests: [Bool] = []
+
+    init(statuses: [LaunchAtLoginStatus]) {
+        self.statuses = statuses
+    }
+
+    func status() -> LaunchAtLoginStatus {
+        statusReadCount += 1
+        if statuses.count > 1 {
+            return statuses.removeFirst()
+        }
+        return statuses.first ?? .disabled
+    }
+
+    func setEnabled(_ enabled: Bool) -> Result<LaunchAtLoginStatus, LaunchAtLoginError> {
+        enabledRequests.append(enabled)
+        if setResults.isEmpty {
+            return .success(enabled ? .enabled : .disabled)
+        }
+        return setResults.removeFirst()
     }
 }
 

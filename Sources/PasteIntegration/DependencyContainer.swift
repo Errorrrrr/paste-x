@@ -24,6 +24,7 @@ public final class ClipboardAssistantDependencyContainer {
         settingsPresenter: ShortcutSettingsPresenting? = ShortcutSettingsPresenter(),
         shortcutStore: ShortcutSettingsStoring? = UserDefaultsShortcutSettingsStore(),
         appSettingsStore: AppSettingsStoring? = UserDefaultsAppSettingsStore(),
+        launchAtLoginManager: LaunchAtLoginManaging? = SMAppServiceLaunchAtLoginManager(),
         settingsHandler: (() -> Void)? = nil,
         quitHandler: (() -> Void)? = nil
     ) {
@@ -84,6 +85,7 @@ public final class ClipboardAssistantDependencyContainer {
             settingsPresenter: settingsPresenter,
             shortcutStore: shortcutStore,
             settingsStore: appSettingsStore,
+            launchAtLoginManager: launchAtLoginManager,
             shortcut: shortcut,
             settings: appSettings
         )

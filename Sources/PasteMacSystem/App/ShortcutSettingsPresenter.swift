@@ -8,8 +8,10 @@ public protocol ShortcutSettingsPresenting: AnyObject {
         currentShortcut: HotKeyShortcut,
         defaultShortcut: HotKeyShortcut,
         currentSettings: AppSettings,
+        launchAtLoginStatus: LaunchAtLoginStatus,
         saveHandler: @escaping (HotKeyShortcut) -> Result<Void, HotKeyError>,
-        settingsChangeHandler: @escaping (AppSettings) -> Void
+        settingsChangeHandler: @escaping (AppSettings) -> Void,
+        launchAtLoginChangeHandler: @escaping (Bool) -> Result<LaunchAtLoginStatus, LaunchAtLoginError>
     )
 }
 
@@ -23,18 +25,22 @@ public final class ShortcutSettingsPresenter: ShortcutSettingsPresenting {
         currentShortcut: HotKeyShortcut,
         defaultShortcut: HotKeyShortcut,
         currentSettings: AppSettings,
+        launchAtLoginStatus: LaunchAtLoginStatus,
         saveHandler: @escaping (HotKeyShortcut) -> Result<Void, HotKeyError>,
-        settingsChangeHandler: @escaping (AppSettings) -> Void
+        settingsChangeHandler: @escaping (AppSettings) -> Void,
+        launchAtLoginChangeHandler: @escaping (Bool) -> Result<LaunchAtLoginStatus, LaunchAtLoginError>
     ) {
         let view = ShortcutSettingsView(
             currentShortcut: currentShortcut,
             defaultShortcut: defaultShortcut,
             currentSettings: currentSettings,
+            launchAtLoginStatus: launchAtLoginStatus,
             saveHandler: saveHandler,
             settingsChangeHandler: { [weak self] settings in
                 self?.updateWindowTitle(language: settings.language)
                 settingsChangeHandler(settings)
-            }
+            },
+            launchAtLoginChangeHandler: launchAtLoginChangeHandler
         )
         let hostingController = NSHostingController(rootView: view)
 
@@ -62,7 +68,7 @@ public final class ShortcutSettingsPresenter: ShortcutSettingsPresenting {
         window.isMovableByWindowBackground = true
         window.level = .statusBar
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        window.setContentSize(NSSize(width: 460, height: 312))
+        window.setContentSize(NSSize(width: 460, height: 398))
         window.center()
     }
 
@@ -86,18 +92,23 @@ private struct ShortcutSettingsView: View {
     @State private var control: Bool
     @State private var shift: Bool
     @State private var language: AppLanguage
+    @State private var launchAtLoginStatus: LaunchAtLoginStatus
     @State private var feedback: SettingsFeedback?
+    @State private var launchAtLoginFeedback: LaunchAtLoginFeedback?
 
     private let defaultShortcut: HotKeyShortcut
     private let saveHandler: (HotKeyShortcut) -> Result<Void, HotKeyError>
     private let settingsChangeHandler: (AppSettings) -> Void
+    private let launchAtLoginChangeHandler: (Bool) -> Result<LaunchAtLoginStatus, LaunchAtLoginError>
 
     init(
         currentShortcut: HotKeyShortcut,
         defaultShortcut: HotKeyShortcut,
         currentSettings: AppSettings,
+        launchAtLoginStatus: LaunchAtLoginStatus,
         saveHandler: @escaping (HotKeyShortcut) -> Result<Void, HotKeyError>,
-        settingsChangeHandler: @escaping (AppSettings) -> Void
+        settingsChangeHandler: @escaping (AppSettings) -> Void,
+        launchAtLoginChangeHandler: @escaping (Bool) -> Result<LaunchAtLoginStatus, LaunchAtLoginError>
     ) {
         _keyEquivalent = State(initialValue: currentShortcut.keyEquivalent)
         _command = State(initialValue: currentShortcut.modifiers.contains("command"))
@@ -105,19 +116,17 @@ private struct ShortcutSettingsView: View {
         _control = State(initialValue: currentShortcut.modifiers.contains("control"))
         _shift = State(initialValue: currentShortcut.modifiers.contains("shift"))
         _language = State(initialValue: currentSettings.language)
+        _launchAtLoginStatus = State(initialValue: launchAtLoginStatus)
         self.defaultShortcut = defaultShortcut
         self.saveHandler = saveHandler
         self.settingsChangeHandler = settingsChangeHandler
+        self.launchAtLoginChangeHandler = launchAtLoginChangeHandler
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text(strings.keyboardShortcutTitle)
+            Text(strings.settingsTitle)
                 .font(.system(size: 20, weight: .semibold))
-
-            Text(strings.keyboardShortcutDescription)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
 
             Picker(strings.languageTitle, selection: $language) {
                 ForEach(AppLanguage.allCases) { language in
@@ -126,6 +135,19 @@ private struct ShortcutSettingsView: View {
                 }
             }
             .pickerStyle(.segmented)
+
+            launchAtLoginSection
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(strings.keyboardShortcutTitle)
+                    .font(.system(size: 14, weight: .semibold))
+
+                Text(strings.keyboardShortcutDescription)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
 
             HStack(alignment: .top, spacing: 18) {
                 modifiers
@@ -180,6 +202,39 @@ private struct ShortcutSettingsView: View {
         .toggleStyle(.checkbox)
     }
 
+    private var launchAtLoginSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Toggle(isOn: launchAtLoginBinding) {
+                Text(strings.launchAtLoginTitle)
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .toggleStyle(.switch)
+            .disabled(launchAtLoginStatus.isUnavailable)
+
+            Text(launchAtLoginStatus.message(language: language))
+                .font(.system(size: 12))
+                .foregroundStyle(launchAtLoginStatus.isAttentionNeeded ? .orange : .secondary)
+
+            if let launchAtLoginFeedback {
+                Text(launchAtLoginFeedback.message(language: language))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(launchAtLoginFeedback.isError ? .red : .green)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: {
+                launchAtLoginStatus.isEnabled
+            },
+            set: { enabled in
+                applyLaunchAtLogin(enabled: enabled)
+            }
+        )
+    }
+
     private var candidateShortcut: HotKeyShortcut {
         var modifiers: Set<String> = []
         if command { modifiers.insert("command") }
@@ -226,6 +281,16 @@ private struct ShortcutSettingsView: View {
             feedback = .shortcutFailure(error)
         }
     }
+
+    private func applyLaunchAtLogin(enabled: Bool) {
+        switch launchAtLoginChangeHandler(enabled) {
+        case let .success(status):
+            launchAtLoginStatus = status
+            launchAtLoginFeedback = .updated(status)
+        case let .failure(error):
+            launchAtLoginFeedback = .failure(error)
+        }
+    }
 }
 
 enum SettingsFeedback: Equatable {
@@ -255,6 +320,28 @@ enum SettingsFeedback: Equatable {
     }
 }
 
+enum LaunchAtLoginFeedback: Equatable {
+    case updated(LaunchAtLoginStatus)
+    case failure(LaunchAtLoginError)
+
+    var isError: Bool {
+        if case .failure = self {
+            return true
+        }
+        return false
+    }
+
+    func message(language: AppLanguage) -> String {
+        let strings = ShortcutSettingsStrings(language: language)
+        switch self {
+        case let .updated(status):
+            return strings.launchAtLoginUpdatedMessage(status)
+        case let .failure(error):
+            return error.settingsDescription(language: language)
+        }
+    }
+}
+
 private extension HotKeyError {
     func settingsDescription(language: AppLanguage) -> String {
         switch self {
@@ -268,11 +355,61 @@ private extension HotKeyError {
     }
 }
 
+private extension LaunchAtLoginError {
+    func settingsDescription(language: AppLanguage) -> String {
+        switch self {
+        case let .unavailable(message), let .operationFailed(message):
+            if message.isEmpty {
+                return language == .english
+                    ? "Launch at login could not be updated."
+                    : "无法更新开机启动设置。"
+            }
+            return message
+        }
+    }
+}
+
+private extension LaunchAtLoginStatus {
+    var isUnavailable: Bool {
+        if case .unavailable = self {
+            return true
+        }
+        return false
+    }
+
+    var isAttentionNeeded: Bool {
+        switch self {
+        case .requiresApproval, .unavailable:
+            return true
+        case .enabled, .disabled:
+            return false
+        }
+    }
+
+    func message(language: AppLanguage) -> String {
+        let strings = ShortcutSettingsStrings(language: language)
+        switch self {
+        case .enabled:
+            return strings.launchAtLoginEnabledStatus
+        case .disabled:
+            return strings.launchAtLoginDisabledStatus
+        case .requiresApproval:
+            return strings.launchAtLoginRequiresApprovalStatus
+        case let .unavailable(message):
+            return message.isEmpty ? strings.launchAtLoginUnavailableStatus : message
+        }
+    }
+}
+
 private struct ShortcutSettingsStrings {
     let language: AppLanguage
 
     var windowTitle: String {
         language == .english ? "PasteX Settings" : "PasteX 设置"
+    }
+
+    var settingsTitle: String {
+        language == .english ? "Settings" : "设置"
     }
 
     var keyboardShortcutTitle: String {
@@ -287,6 +424,30 @@ private struct ShortcutSettingsStrings {
 
     var languageTitle: String {
         language == .english ? "Language" : "语言"
+    }
+
+    var launchAtLoginTitle: String {
+        language == .english ? "Open at Login" : "开机启动"
+    }
+
+    var launchAtLoginEnabledStatus: String {
+        language == .english ? "PasteX will open after you sign in." : "PasteX 会在登录后自动打开。"
+    }
+
+    var launchAtLoginDisabledStatus: String {
+        language == .english ? "PasteX will not open automatically." : "PasteX 不会自动打开。"
+    }
+
+    var launchAtLoginRequiresApprovalStatus: String {
+        language == .english
+            ? "Approve PasteX in System Settings to finish enabling this."
+            : "请在系统设置中允许 PasteX 完成开启。"
+    }
+
+    var launchAtLoginUnavailableStatus: String {
+        language == .english
+            ? "Open at Login is unavailable for this build."
+            : "当前构建无法使用开机启动。"
     }
 
     var keyTitle: String {
@@ -325,6 +486,19 @@ private struct ShortcutSettingsStrings {
 
     func appliedShortcutMessage(_ shortcut: String) -> String {
         language == .english ? "Applied \(shortcut)." : "已应用 \(shortcut)。"
+    }
+
+    func launchAtLoginUpdatedMessage(_ status: LaunchAtLoginStatus) -> String {
+        switch status {
+        case .enabled:
+            return language == .english ? "Open at Login enabled." : "已开启开机启动。"
+        case .disabled:
+            return language == .english ? "Open at Login disabled." : "已关闭开机启动。"
+        case .requiresApproval:
+            return launchAtLoginRequiresApprovalStatus
+        case .unavailable:
+            return launchAtLoginUnavailableStatus
+        }
     }
 
     func languageName(_ option: AppLanguage) -> String {
