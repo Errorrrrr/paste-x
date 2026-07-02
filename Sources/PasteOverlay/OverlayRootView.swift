@@ -320,7 +320,7 @@ public struct OverlayRootView: View {
         }
 
         guard request.delay > 0 else {
-            scrollSelection(to: request.itemID, proxy: proxy)
+            scrollSelection(request, proxy: proxy)
             return
         }
 
@@ -331,17 +331,20 @@ public struct OverlayRootView: View {
                 return
             }
 
-            scrollSelection(to: request.itemID, proxy: proxy)
+            scrollSelection(request, proxy: proxy)
         }
     }
 
-    private func scrollSelection(to itemID: ClipboardItem.ID, proxy: ScrollViewProxy) {
-        scrollTarget(.item(itemID), anchor: .center, proxy: proxy)
+    private func scrollSelection(_ request: OverlaySelectionScrollRequest, proxy: ScrollViewProxy) {
+        switch request.alignment {
+        case .minimalVisibility:
+            scrollTarget(.item(request.itemID), anchor: nil, proxy: proxy)
+        }
     }
 
     private func scrollTarget(
         _ target: OverlayScrollTarget,
-        anchor: UnitPoint,
+        anchor: UnitPoint?,
         proxy: ScrollViewProxy,
         animated: Bool = true
     ) {

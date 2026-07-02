@@ -24,13 +24,23 @@ public enum OverlaySelectionSource: Equatable, Sendable {
     case mouse
 }
 
+public enum OverlaySelectionScrollAlignment: Equatable, Sendable {
+    case minimalVisibility
+}
+
 public struct OverlaySelectionScrollRequest: Equatable, Sendable {
     public let itemID: ClipboardItem.ID
     public let delay: TimeInterval
+    public let alignment: OverlaySelectionScrollAlignment
 
-    public init(itemID: ClipboardItem.ID, delay: TimeInterval) {
+    public init(
+        itemID: ClipboardItem.ID,
+        delay: TimeInterval,
+        alignment: OverlaySelectionScrollAlignment = .minimalVisibility
+    ) {
         self.itemID = itemID
         self.delay = max(0, delay)
+        self.alignment = alignment
     }
 }
 
@@ -54,7 +64,11 @@ public struct OverlaySelectionScrollPolicy: Equatable, Sendable {
         }
 
         let delay = source == .mouse ? mouseSelectionDelay : 0
-        return OverlaySelectionScrollRequest(itemID: itemID, delay: delay)
+        return OverlaySelectionScrollRequest(
+            itemID: itemID,
+            delay: delay,
+            alignment: .minimalVisibility
+        )
     }
 }
 

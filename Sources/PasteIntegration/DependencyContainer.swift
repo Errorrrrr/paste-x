@@ -70,6 +70,9 @@ public final class ClipboardAssistantDependencyContainer {
             cancelSelfWrite: { [clipboardMonitor] item in
                 clipboardMonitor.cancelSelfWrite(signature: item.signature)
             },
+            promoteHistoryItem: { [historyStore] item in
+                historyStore.insert(item)
+            },
             onMenuAction: { [commandProxy] action in
                 commandProxy.handle(action)
             }

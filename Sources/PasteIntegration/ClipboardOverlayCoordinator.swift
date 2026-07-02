@@ -28,6 +28,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
     private let permissionPresenter: PermissionPresenting?
     private let markSelfWrite: (ClipboardItem) -> Void
     private let cancelSelfWrite: (ClipboardItem) -> Void
+    private let promoteHistoryItem: (ClipboardItem) -> Void
     private let onMenuAction: (OverlayMenuAction) -> Void
     private var language: AppLanguage
     private var currentTarget: PasteTarget?
@@ -40,6 +41,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
         language: AppLanguage = .english,
         markSelfWrite: @escaping (ClipboardItem) -> Void,
         cancelSelfWrite: @escaping (ClipboardItem) -> Void = { _ in },
+        promoteHistoryItem: @escaping (ClipboardItem) -> Void = { _ in },
         onMenuAction: @escaping (OverlayMenuAction) -> Void = { _ in }
     ) {
         let relay = OverlayPasteRequestRelay()
@@ -60,6 +62,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
             language: language,
             markSelfWrite: markSelfWrite,
             cancelSelfWrite: cancelSelfWrite,
+            promoteHistoryItem: promoteHistoryItem,
             onMenuAction: onMenuAction
         )
 
@@ -78,6 +81,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
         language: AppLanguage = .english,
         markSelfWrite: @escaping (ClipboardItem) -> Void,
         cancelSelfWrite: @escaping (ClipboardItem) -> Void = { _ in },
+        promoteHistoryItem: @escaping (ClipboardItem) -> Void = { _ in },
         onMenuAction: @escaping (OverlayMenuAction) -> Void = { _ in }
     ) {
         self.windowController = windowController
@@ -85,6 +89,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
         self.permissionPresenter = permissionPresenter
         self.markSelfWrite = markSelfWrite
         self.cancelSelfWrite = cancelSelfWrite
+        self.promoteHistoryItem = promoteHistoryItem
         self.onMenuAction = onMenuAction
         self.language = language
     }
@@ -140,6 +145,10 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
 
         if expectsPasteboardWrite && !result.wrotePasteboard {
             cancelSelfWrite(request.item)
+        }
+
+        if expectsPasteboardWrite && result.wrotePasteboard {
+            promoteHistoryItem(request.item)
         }
 
         if let feedbackMessage = result.copyOnlyFeedbackMessage(language: language) {

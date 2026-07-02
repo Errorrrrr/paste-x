@@ -97,6 +97,19 @@ import Testing
 }
 
 @MainActor
+@Test func selectionScrollRequestsMinimalVisibilityInsteadOfCentering() throws {
+    let itemID = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 275))[2].id
+    let request = OverlaySelectionScrollPolicy(mouseSelectionDelay: 0.5).scrollRequest(
+        for: itemID,
+        source: .automatic
+    )
+
+    #expect(request?.itemID == itemID)
+    #expect(request?.delay == 0)
+    #expect(request?.alignment == .minimalVisibility)
+}
+
+@MainActor
 @Test func pasteRequestReturnsSelectedItemAndTrigger() throws {
     let items = OverlayMockData.items(referenceDate: Date(timeIntervalSince1970: 300))
     let store = OverlaySelectionStore(items: Array(items.prefix(2)))

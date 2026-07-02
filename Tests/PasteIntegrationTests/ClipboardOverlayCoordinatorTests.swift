@@ -24,6 +24,9 @@ import Testing
         },
         cancelSelfWrite: { item in
             events.append("cancel:\(item.signature)")
+        },
+        promoteHistoryItem: { item in
+            events.append("promote:\(item.signature)")
         }
     )
 
@@ -36,7 +39,7 @@ import Testing
     #expect(coordinator.lastPasteResult == .pasted)
     #expect(pasteCoordinator.requests == [PasteRequest(item: item, target: target)])
     #expect(permissionPresenter.ensureCount == 1)
-    #expect(events == ["mark:text:hello", "paste"])
+    #expect(events == ["mark:text:hello", "paste", "promote:text:hello"])
     #expect(windowController.hideCount == 1)
     #expect(windowController.isVisible == false)
 }
@@ -46,11 +49,17 @@ import Testing
     let item = makeItem(summary: "hello", signature: "text:hello")
     let target = makeTarget()
     let copiedOnlyWindow = FakeOverlayWindowController()
+    var copiedOnlyEvents: [String] = []
     let copiedOnlyCoordinator = ClipboardOverlayCoordinator(
         windowController: copiedOnlyWindow,
         pasteCoordinator: FakePasteCoordinator(result: .copiedOnly(reason: .accessibilityNotTrusted)),
         permissionPresenter: nil,
-        markSelfWrite: { _ in }
+        markSelfWrite: { item in
+            copiedOnlyEvents.append("mark:\(item.signature)")
+        },
+        promoteHistoryItem: { item in
+            copiedOnlyEvents.append("promote:\(item.signature)")
+        }
     )
 
     copiedOnlyCoordinator.toggle(items: [item], target: target)
@@ -66,6 +75,7 @@ import Testing
             hideAfter: 1.4
         )
     ])
+    #expect(copiedOnlyEvents == ["mark:text:hello", "promote:text:hello"])
 
     let failedWindow = FakeOverlayWindowController()
     var failedEvents: [String] = []
@@ -78,6 +88,9 @@ import Testing
         },
         cancelSelfWrite: { item in
             failedEvents.append("cancel:\(item.signature)")
+        },
+        promoteHistoryItem: { item in
+            failedEvents.append("promote:\(item.signature)")
         }
     )
 
@@ -157,6 +170,35 @@ import Testing
 
     #expect(settingsCount == 1)
     #expect(quitCount == 1)
+}
+
+@MainActor
+@Test func dependencyContainerPromotesPastedOverlayItemToHistoryFront() async {
+    let older = makeItem(summary: "older", signature: "text:older")
+    let selected = makeItem(summary: "selected", signature: "text:selected")
+    let newest = makeItem(summary: "newest", signature: "text:newest")
+    let container = ClipboardAssistantDependencyContainer(
+        pasteCoordinator: FakePasteCoordinator(result: .pasted),
+        permissionPresenter: nil,
+        settingsPresenter: nil,
+        shortcutStore: nil,
+        appSettingsStore: nil,
+        launchAtLoginManager: nil
+    )
+
+    container.historyStore.insert(older)
+    container.historyStore.insert(selected)
+    container.historyStore.insert(newest)
+
+    container.overlayPresenter.toggle(items: container.historyStore.items, target: makeTarget())
+    await Task.yield()
+    await container.overlayPresenter.paste(OverlayPasteRequest(item: selected, trigger: .returnKey))
+
+    #expect(container.historyStore.items.map(\.signature) == [
+        "text:selected",
+        "text:newest",
+        "text:older"
+    ])
 }
 
 private struct PasteRequest: Equatable {
