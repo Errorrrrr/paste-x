@@ -42,14 +42,11 @@ public final class OverlayWindowController: NSObject {
         let panel = makePanelIfNeeded()
         let frame = restingFrame(on: screen ?? screenContainingMouse() ?? NSScreen.main)
         refreshHostingView()
-        NSApp.activate(ignoringOtherApps: true)
-
         if panel.isVisible {
             visibilityAnimationID = UUID()
             panel.animator().setFrame(frame, display: true)
             panel.alphaValue = 1
-            panel.makeKeyAndOrderFront(nil)
-            panel.orderFrontRegardless()
+            OverlayPanelPresentation.presentWithoutActivating(panel)
         } else {
             animateIn(panel: panel, restingFrame: frame)
         }
@@ -108,7 +105,7 @@ public final class OverlayWindowController: NSObject {
 
         let panel = OverlayPanel(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: Layout.panelHeight),
-            styleMask: [.borderless],
+            styleMask: OverlayPanelPresentation.styleMask,
             backing: .buffered,
             defer: false
         )
@@ -158,8 +155,7 @@ public final class OverlayWindowController: NSObject {
         visibilityAnimationID = animationID
         panel.setFrame(OverlayPanelGeometry.hiddenFrame(from: restingFrame), display: false)
         panel.alphaValue = 0
-        panel.makeKeyAndOrderFront(nil)
-        panel.orderFrontRegardless()
+        OverlayPanelPresentation.presentWithoutActivating(panel)
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Layout.animationDuration
@@ -364,12 +360,21 @@ private enum Layout {
 }
 
 enum OverlayPanelPresentation {
+    static let styleMask: NSWindow.StyleMask = [.borderless, .nonactivatingPanel]
+
     @MainActor
     static func configure(_ panel: NSPanel) {
+        panel.styleMask.insert(.nonactivatingPanel)
         // Target app activation during paste deactivates PasteX; keep the panel visible
         // long enough for the custom slide/fade dismissal instead of NSPanel auto-hide.
         panel.hidesOnDeactivate = false
         panel.animationBehavior = .none
+    }
+
+    @MainActor
+    static func presentWithoutActivating(_ panel: NSPanel) {
+        panel.orderFrontRegardless()
+        panel.makeKey()
     }
 }
 

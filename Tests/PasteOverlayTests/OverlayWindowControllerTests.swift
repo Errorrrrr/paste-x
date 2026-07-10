@@ -34,7 +34,7 @@ import Testing
 @Test func overlayPanelPresentationKeepsPanelVisibleWhenAppDeactivates() {
     let panel = NSPanel(
         contentRect: NSRect(x: 0, y: 0, width: 960, height: 336),
-        styleMask: [.borderless],
+        styleMask: OverlayPanelPresentation.styleMask,
         backing: .buffered,
         defer: false
     )
@@ -43,6 +43,21 @@ import Testing
 
     #expect(panel.hidesOnDeactivate == false)
     #expect(panel.animationBehavior == .none)
+}
+
+@MainActor
+@Test func overlayPanelPresentationUsesNonactivatingKeyPanel() {
+    let panel = NSPanel(
+        contentRect: NSRect(x: 0, y: 0, width: 960, height: 336),
+        styleMask: [.borderless],
+        backing: .buffered,
+        defer: false
+    )
+
+    OverlayPanelPresentation.configure(panel)
+
+    #expect(OverlayPanelPresentation.styleMask.contains(.nonactivatingPanel))
+    #expect(panel.styleMask.contains(.nonactivatingPanel))
 }
 
 @Test func outsideClickPolicyKeepsGlobalMouseDownInsidePanelOpen() {
