@@ -28,7 +28,7 @@ SIGNING_MODE=release CODESIGN_IDENTITY="Developer ID Application: Example Team (
 SKIP_CODESIGN=1 ./scripts/build-macos.sh
 ```
 
-`SIGNING_MODE=release` fails unless `CODESIGN_IDENTITY` is set to a Developer ID Application identity and `NOTARY_KEYCHAIN_PROFILE` is set. Release mode signs with hardened runtime, submits the zip with `notarytool`, staples the app, and re-zips the stapled bundle. If either signing or notarization credentials are unavailable, use the default QA mode and hand off only the `*-qa-only.zip` artifact.
+`SIGNING_MODE=release` fails unless `CODESIGN_IDENTITY` is set to a Developer ID Application identity and `NOTARY_KEYCHAIN_PROFILE` is set. Release mode signs with hardened runtime, creates one ZIP, and submits that same ZIP with `notarytool`; it does not rebuild the ZIP after approval. The delivered archive therefore relies on Apple's online notarization check on first launch rather than containing a stapled ticket for offline verification. If either signing or notarization credentials are unavailable, use the default QA mode and hand off only the `*-qa-only.zip` artifact.
 
 ```bash
 SIGNING_MODE=release CODESIGN_IDENTITY="Developer ID Application: Example Team (TEAMID)" NOTARY_KEYCHAIN_PROFILE="paste-notary" ./scripts/build-macos.sh
