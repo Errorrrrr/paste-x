@@ -46,7 +46,7 @@ public final class OverlayWindowController: NSObject {
             visibilityAnimationID = UUID()
             panel.animator().setFrame(frame, display: true)
             panel.alphaValue = 1
-            OverlayPanelPresentation.presentWithoutActivating(panel)
+            OverlayPanelPresentation.presentWithoutActivatingApplication(panel)
         } else {
             animateIn(panel: panel, restingFrame: frame)
         }
@@ -118,7 +118,7 @@ public final class OverlayWindowController: NSObject {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         OverlayPanelPresentation.configure(panel)
         panel.keyDownHandler = { [weak self] event in
-            self?.handleKeyDown(event) ?? false
+            self?.handleKeyboardEvent(OverlayKeyboardEvent(event)) ?? false
         }
 
         let hostingView = NSHostingView(rootView: makeRootView())
@@ -133,7 +133,7 @@ public final class OverlayWindowController: NSObject {
             store: store,
             language: language,
             onPasteRequest: { [weak self] request in
-                self?.onPasteRequested(request)
+                self?.submitPasteRequest(request)
             },
             onMenuAction: { [weak self] action in
                 self?.onMenuAction(action)
@@ -155,7 +155,7 @@ public final class OverlayWindowController: NSObject {
         visibilityAnimationID = animationID
         panel.setFrame(OverlayPanelGeometry.hiddenFrame(from: restingFrame), display: false)
         panel.alphaValue = 0
-        OverlayPanelPresentation.presentWithoutActivating(panel)
+        OverlayPanelPresentation.presentWithoutActivatingApplication(panel)
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Layout.animationDuration
@@ -265,7 +265,8 @@ public final class OverlayWindowController: NSObject {
         }
     }
 
-    private func handleKeyDown(_ event: NSEvent) -> Bool {
+    @discardableResult
+    func handleKeyboardEvent(_ event: OverlayKeyboardEvent) -> Bool {
         if store.isSearching, let text = searchText(from: event) {
             store.appendSearchText(text)
             return true
@@ -302,10 +303,10 @@ public final class OverlayWindowController: NSObject {
         }
     }
 
-    private func searchText(from event: NSEvent) -> String? {
-        if event.modifierFlags.contains(.command)
-            || event.modifierFlags.contains(.control)
-            || event.modifierFlags.contains(.option) {
+    private func searchText(from event: OverlayKeyboardEvent) -> String? {
+        if event.modifiers.contains(.command)
+            || event.modifiers.contains(.control)
+            || event.modifiers.contains(.option) {
             return nil
         }
 
@@ -325,7 +326,13 @@ public final class OverlayWindowController: NSObject {
             return
         }
 
-        onPasteRequested(request)
+        submitPasteRequest(request)
+    }
+
+    private func submitPasteRequest(_ request: OverlayPasteRequest) {
+        OverlayPanelPresentation.performAfterRelinquishingKeyFocus(panel) { [weak self] in
+            self?.onPasteRequested(request)
+        }
     }
 }
 
@@ -365,6 +372,7 @@ enum OverlayPanelPresentation {
     @MainActor
     static func configure(_ panel: NSPanel) {
         panel.styleMask.insert(.nonactivatingPanel)
+        panel.becomesKeyOnlyIfNeeded = true
         // Target app activation during paste deactivates PasteX; keep the panel visible
         // long enough for the custom slide/fade dismissal instead of NSPanel auto-hide.
         panel.hidesOnDeactivate = false
@@ -372,9 +380,20 @@ enum OverlayPanelPresentation {
     }
 
     @MainActor
-    static func presentWithoutActivating(_ panel: NSPanel) {
+    static func presentWithoutActivatingApplication(_ panel: NSPanel) {
         panel.orderFrontRegardless()
         panel.makeKey()
+    }
+
+    @MainActor
+    static func performAfterRelinquishingKeyFocus(
+        _ panel: NSPanel?,
+        action: @escaping @MainActor () -> Void
+    ) {
+        panel?.resignKey()
+        DispatchQueue.main.async {
+            action()
+        }
     }
 }
 

@@ -46,8 +46,8 @@ import Testing
 }
 
 @MainActor
-@Test func overlayPanelPresentationUsesNonactivatingKeyPanel() {
-    let panel = NSPanel(
+@Test func overlayPanelPresentationUsesNonactivatingKeyFocusForDirectTyping() {
+    let panel = KeyTrackingPanel(
         contentRect: NSRect(x: 0, y: 0, width: 960, height: 336),
         styleMask: [.borderless],
         backing: .buffered,
@@ -55,9 +55,104 @@ import Testing
     )
 
     OverlayPanelPresentation.configure(panel)
+    OverlayPanelPresentation.presentWithoutActivatingApplication(panel)
 
     #expect(OverlayPanelPresentation.styleMask.contains(.nonactivatingPanel))
     #expect(panel.styleMask.contains(.nonactivatingPanel))
+    #expect(panel.becomesKeyOnlyIfNeeded)
+    #expect(panel.makeKeyCallCount == 1)
+    #expect(panel.makeKeyAndOrderFrontCallCount == 0)
+}
+
+@MainActor
+@Test func overlayRelinquishesNonactivatingKeyFocusBeforePasteCallback() async {
+    let panel = KeyTrackingPanel(
+        contentRect: NSRect(x: 0, y: 0, width: 960, height: 336),
+        styleMask: OverlayPanelPresentation.styleMask,
+        backing: .buffered,
+        defer: false
+    )
+    var callbackObservedRelinquishedFocus = false
+
+    OverlayPanelPresentation.performAfterRelinquishingKeyFocus(panel) {
+        callbackObservedRelinquishedFocus = panel.resignKeyCallCount == 1
+    }
+    await Task.yield()
+
+    #expect(panel.resignKeyCallCount == 1)
+    #expect(callbackObservedRelinquishedFocus)
+}
+
+@MainActor
+@Test func overlayRoutesReturnToPasteRequest() async throws {
+    let item = try #require(OverlayMockData.items().first)
+    var requests: [OverlayPasteRequest] = []
+    let controller = OverlayWindowController(
+        onPasteRequested: { request in
+            requests.append(request)
+        }
+    )
+
+    controller.show(items: [item], on: nil)
+    let handled = controller.handleKeyboardEvent(OverlayKeyboardEvent(
+        keyCode: 36,
+        modifiers: [],
+        characters: "\r",
+        isRepeat: false
+    ))
+    await Task.yield()
+
+    #expect(handled)
+    #expect(requests == [OverlayPasteRequest(item: item, trigger: .returnKey)])
+}
+
+@MainActor
+@Test func overlayRoutesDirectTypingToSearchAndEscapeToClearThenClose() async throws {
+    let items = OverlayMockData.items()
+    let store = OverlaySelectionStore()
+    var dismissCount = 0
+    let controller = OverlayWindowController(
+        store: store,
+        onDismiss: {
+            dismissCount += 1
+        }
+    )
+
+    controller.show(items: items, on: nil)
+    let searchHandled = controller.handleKeyboardEvent(OverlayKeyboardEvent(
+        keyCode: 12,
+        modifiers: [],
+        characters: "q",
+        isRepeat: false
+    ))
+
+    #expect(searchHandled)
+    #expect(store.isSearching)
+    #expect(store.searchQuery == "q")
+
+    let clearHandled = controller.handleKeyboardEvent(OverlayKeyboardEvent(
+        keyCode: 53,
+        modifiers: [],
+        characters: nil,
+        isRepeat: false
+    ))
+
+    #expect(clearHandled)
+    #expect(store.isSearching == false)
+    #expect(controller.isVisible)
+
+    let closeHandled = controller.handleKeyboardEvent(OverlayKeyboardEvent(
+        keyCode: 53,
+        modifiers: [],
+        characters: nil,
+        isRepeat: false
+    ))
+    for _ in 0..<100 where dismissCount == 0 {
+        try await Task.sleep(for: .milliseconds(20))
+    }
+
+    #expect(closeHandled)
+    #expect(dismissCount == 1)
 }
 
 @Test func outsideClickPolicyKeepsGlobalMouseDownInsidePanelOpen() {
@@ -70,6 +165,25 @@ import Testing
     )
 
     #expect(isOutside == false)
+}
+
+@MainActor
+private final class KeyTrackingPanel: NSPanel {
+    private(set) var makeKeyCallCount = 0
+    private(set) var makeKeyAndOrderFrontCallCount = 0
+    private(set) var resignKeyCallCount = 0
+
+    override func makeKey() {
+        makeKeyCallCount += 1
+    }
+
+    override func makeKeyAndOrderFront(_ sender: Any?) {
+        makeKeyAndOrderFrontCallCount += 1
+    }
+
+    override func resignKey() {
+        resignKeyCallCount += 1
+    }
 }
 
 @Test func outsideClickPolicyDismissesGlobalMouseDownOutsidePanel() {
