@@ -28,7 +28,6 @@ esac
 
 identity="${CODESIGN_IDENTITY:-}"
 notary_profile="${NOTARY_KEYCHAIN_PROFILE:-${NOTARY_PROFILE:-}}"
-release_temp_dir=""
 release_succeeded=0
 
 if [[ "$SIGNING_MODE" == "release" ]]; then
@@ -53,7 +52,7 @@ if [[ "$SIGNING_MODE" == "release" ]]; then
         exit 1
     fi
     if ! command -v xcrun >/dev/null 2>&1; then
-        echo "Release builds require xcrun notarytool and stapler for notarization." >&2
+        echo "Release builds require xcrun notarytool for notarization." >&2
         exit 1
     fi
     if ! command -v ditto >/dev/null 2>&1; then
@@ -63,9 +62,6 @@ if [[ "$SIGNING_MODE" == "release" ]]; then
 fi
 
 cleanup_release_artifacts() {
-    if [[ -n "$release_temp_dir" ]]; then
-        rm -rf "$release_temp_dir"
-    fi
     if [[ "$SIGNING_MODE" == "release" && "$release_succeeded" != "1" ]]; then
         rm -f "$ZIP_PATH"
     fi
@@ -139,13 +135,9 @@ create_zip() {
 }
 
 if [[ "$SIGNING_MODE" == "release" ]]; then
-    release_temp_dir="$(mktemp -d "$DIST_DIR/$APP_NAME-notary.XXXXXX")"
-    release_upload_zip="$release_temp_dir/$APP_NAME-macos-$ARCH-notary.zip"
-    create_zip "$release_upload_zip"
-    echo "Submitting release package for notarization with profile: $notary_profile"
-    xcrun notarytool submit "$release_upload_zip" --keychain-profile "$notary_profile" --wait
-    xcrun stapler staple "$APP_BUNDLE"
     create_zip "$ZIP_PATH"
+    echo "Submitting release package for notarization with profile: $notary_profile"
+    xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$notary_profile" --wait
     release_succeeded=1
 elif command -v ditto >/dev/null 2>&1; then
     create_zip "$ZIP_PATH"
