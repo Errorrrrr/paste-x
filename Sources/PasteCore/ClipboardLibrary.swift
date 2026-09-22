@@ -16,6 +16,25 @@ public struct ClipboardLibrarySettings: Codable, Equatable, Sendable {
     public var capturePaused = false
     public var recognizeImages = true
     public init() {}
+
+    private enum CodingKeys: String, CodingKey {
+        case historyLimit, retentionDays, storageLimitMB, excludedBundleIDs
+        case ignoreConfidential, capturePaused, recognizeImages
+    }
+
+    public init(from decoder: Decoder) throws {
+        self.init()
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        // Stored preferences predate newly added options. Only absent keys get
+        // defaults; an invalid existing value must not silently reset user policy.
+        if values.contains(.historyLimit) { historyLimit = try values.decode(Int.self, forKey: .historyLimit) }
+        if values.contains(.retentionDays) { retentionDays = try values.decode(Int.self, forKey: .retentionDays) }
+        if values.contains(.storageLimitMB) { storageLimitMB = try values.decode(Int.self, forKey: .storageLimitMB) }
+        if values.contains(.excludedBundleIDs) { excludedBundleIDs = try values.decode([String].self, forKey: .excludedBundleIDs) }
+        if values.contains(.ignoreConfidential) { ignoreConfidential = try values.decode(Bool.self, forKey: .ignoreConfidential) }
+        if values.contains(.capturePaused) { capturePaused = try values.decode(Bool.self, forKey: .capturePaused) }
+        if values.contains(.recognizeImages) { recognizeImages = try values.decode(Bool.self, forKey: .recognizeImages) }
+    }
 }
 
 public enum ClipboardLibraryAction: Sendable {

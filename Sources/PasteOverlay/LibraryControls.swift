@@ -148,7 +148,9 @@ struct LibrarySettingsView: View {
                 }.frame(height: 80)
                 Text(t("移除分组会保留内容。", "Removing a group keeps its items.")).font(.caption).foregroundStyle(.secondary)
             }
-            if let error = store.storageError { Text(error).font(.caption).foregroundStyle(.red) }
+            if let error = store.storageError {
+                Text(error).font(.caption).foregroundStyle(.red).textSelection(.enabled)
+            }
             HStack {
                 Button(t("清空未收藏历史…", "Clear unpinned history…"), role: .destructive) { confirmsClear = true }
                 Spacer()

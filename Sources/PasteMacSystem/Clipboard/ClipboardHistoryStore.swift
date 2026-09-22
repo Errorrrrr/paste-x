@@ -127,20 +127,45 @@ public final class ClipboardHistoryStore: ClipboardHistoryProviding {
             }
             return
         }
+        var readingFile = "manifest.json"
         do {
             let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: url))
             guard manifest.version == 1, Set(manifest.order).count == manifest.order.count else { throw CocoaError(.fileReadCorruptFile) }
-            groups = manifest.groups; settings = manifest.settings; itemFiles = manifest.files
+            var loadedItems: [ClipboardItem] = []
             for id in manifest.order {
                 guard let file = manifest.files[id], file == URL(fileURLWithPath: file).lastPathComponent,
                       file.hasSuffix(".json") else { throw CocoaError(.fileReadCorruptFile) }
+                readingFile = file
                 let item = try JSONDecoder().decode(ClipboardItem.self, from: Data(contentsOf: directory.appendingPathComponent(file)))
                 guard item.id == id else { throw CocoaError(.fileReadCorruptFile) }
-                items.append(item)
+                loadedItems.append(item)
             }
+            // Publish only a complete library; a broken record must not expose a
+            // partially loaded history with settings/groups from a failed read.
+            items = loadedItems
+            groups = manifest.groups; settings = manifest.settings; itemFiles = manifest.files
         } catch {
             loadFailed = true
-            storageError = "历史库读取失败，已保留原文件并停止写入。 / Library unreadable; original files preserved. \(error.localizedDescription)"
+            storageError = "历史库读取失败，已保留原文件并停止写入。 / Library unreadable; original files preserved.\n\(readingFile): \(Self.readFailureReason(error))"
+        }
+    }
+
+    private static func readFailureReason(_ error: Error) -> String {
+        func field(_ path: [any CodingKey]) -> String {
+            path.map(\.stringValue).joined(separator: ".")
+        }
+        switch error {
+        case let DecodingError.keyNotFound(key, context):
+            return "缺少字段 / Missing field: \(field(context.codingPath + [key]))"
+        case let DecodingError.typeMismatch(_, context):
+            return "字段类型不兼容 / Incompatible field type: \(field(context.codingPath))"
+        case let DecodingError.valueNotFound(_, context):
+            return "字段值为空 / Null field: \(field(context.codingPath))"
+        case let DecodingError.dataCorrupted(context):
+            return "数据格式无效 / Invalid data: \(field(context.codingPath))"
+        default:
+            let nsError = error as NSError
+            return "\(nsError.localizedDescription) [\(nsError.domain):\(nsError.code)]"
         }
     }
 

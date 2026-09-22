@@ -37,6 +37,13 @@ public struct OverlayRootView: View {
                 LibraryToolbar(store: store, language: language, paste: onPasteRequest)
                 if let error = store.storageError {
                     Text(error).font(.caption).foregroundStyle(.red).lineLimit(2).padding(.horizontal, 24)
+                        .help(error)
+                        .contextMenu {
+                            Button(language == .simplifiedChinese ? "复制完整错误信息" : "Copy full error") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(error, forType: .string)
+                            }
+                        }
                 }
 
                 if store.visibleItems.isEmpty {

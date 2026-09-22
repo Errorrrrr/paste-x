@@ -72,6 +72,75 @@ private func clip(_ text: String, at date: Date = Date(), pinned: Bool = false) 
     #expect(store.items.isEmpty)
 }
 
+@Test func olderSettingsWithoutNewFieldsPreserveHistoryAndExistingPreferences() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let store = ClipboardHistoryStore(directory: folder)
+    let item = clip("keep history", pinned: true)
+    store.insert(item)
+    let url = folder.appendingPathComponent("manifest.json")
+    var manifest = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+    manifest["settings"] = ["historyLimit": 87, "retentionDays": 0, "capturePaused": true,
+                            "excludedBundleIDs": ["test.private"]]
+    try JSONSerialization.data(withJSONObject: manifest).write(to: url)
+    let restored = ClipboardHistoryStore(directory: folder)
+    #expect(restored.storageError == nil)
+    #expect(restored.items == [item])
+    #expect(restored.settings.historyLimit == 87)
+    #expect(restored.settings.retentionDays == 0)
+    #expect(restored.settings.capturePaused)
+    #expect(restored.settings.excludedBundleIDs == ["test.private"])
+    #expect(restored.settings.storageLimitMB == ClipboardLibrarySettings().storageLimitMB)
+    restored.insert(clip("new content"))
+    #expect(ClipboardHistoryStore(directory: folder).items.count == 2)
+}
+
+@Test func invalidSettingsRemainReadOnlyWithActionableDiagnostic() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    _ = ClipboardHistoryStore(directory: folder)
+    let url = folder.appendingPathComponent("manifest.json")
+    var manifest = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
+    var settings = try #require(manifest["settings"] as? [String: Any])
+    settings["historyLimit"] = "invalid-private-value"
+    manifest["settings"] = settings
+    let original = try JSONSerialization.data(withJSONObject: manifest)
+    try original.write(to: url)
+    let restored = ClipboardHistoryStore(directory: folder)
+    restored.insert(clip("do not overwrite"))
+    #expect(restored.storageError?.contains("settings.historyLimit") == true)
+    #expect(restored.storageError?.contains("invalid-private-value") == false)
+    #expect(try Data(contentsOf: url) == original)
+}
+
+@Test func missingLaterRecordDoesNotExposePartialLibraryOrOverwriteManifest() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let store = ClipboardHistoryStore(directory: folder)
+    let older = clip("missing record", pinned: true)
+    store.insert(older)
+    store.insert(clip("readable record", pinned: true))
+    store.apply(.createGroup("Keep"))
+    let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+    let missingFile = try #require(files.first { $0.hasPrefix(older.id.uuidString) })
+    try FileManager.default.removeItem(at: folder.appendingPathComponent(missingFile))
+    let manifest = folder.appendingPathComponent("manifest.json")
+    let original = try Data(contentsOf: manifest)
+    let restored = ClipboardHistoryStore(directory: folder)
+    #expect(restored.items.isEmpty)
+    #expect(restored.groups.isEmpty)
+    #expect(restored.storageError?.contains(missingFile) == true)
+    restored.insert(clip("do not overwrite"))
+    #expect(try Data(contentsOf: manifest) == original)
+}
+
+@Test func nullExistingPrivacySettingIsNotResetToDefault() throws {
+    let json = Data(#"{"capturePaused":null}"#.utf8)
+    #expect(throws: DecodingError.self) {
+        try JSONDecoder().decode(ClipboardLibrarySettings.self, from: json)
+    }
+}
+
 @Test func failedDiskWriteRollsBackMemoryAndKeepsSavedLibrary() throws {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: folder) }
