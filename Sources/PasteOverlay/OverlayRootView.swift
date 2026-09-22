@@ -34,6 +34,10 @@ public struct OverlayRootView: View {
 
             VStack(spacing: 8) {
                 toolbar
+                LibraryToolbar(store: store, language: language, paste: onPasteRequest)
+                if let error = store.storageError {
+                    Text(error).font(.caption).foregroundStyle(.red).lineLimit(2).padding(.horizontal, 24)
+                }
 
                 if store.visibleItems.isEmpty {
                     emptyState
@@ -51,6 +55,7 @@ public struct OverlayRootView: View {
         }
         .frame(minWidth: 760, maxWidth: .infinity, minHeight: 316, maxHeight: .infinity)
         .animation(.easeOut(duration: 0.14), value: store.feedbackMessage)
+        .disabled(store.isShowingDialog)
         .onChange(of: store.isSearching) { _, isSearching in
             isSearchFieldFocused = isSearching
         }
@@ -217,14 +222,15 @@ public struct OverlayRootView: View {
     private var itemStrip: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: OverlayContentLayout.itemSpacing) {
+                LazyHStack(alignment: .top, spacing: OverlayContentLayout.itemSpacing) {
                     ForEach(Array(store.visibleItems.enumerated()), id: \.element.id) { index, item in
                         ClipboardItemView(
                             item: item,
                             displayIndex: index + 1,
                             language: language,
-                            isSelected: item.id == store.selectedItemID,
+                            isSelected: item.id == store.selectedItemID || store.selectedIDs.contains(item.id),
                             onSelect: {
+                                if NSEvent.modifierFlags.contains(.command) { store.toggleMultiple(item.id) }
                                 store.select(id: item.id, source: .mouse)
                             },
                             onPaste: {
@@ -233,6 +239,15 @@ public struct OverlayRootView: View {
                             }
                         )
                         .equatable()
+                        .contextMenu { itemMenu(item) }
+                        .onDrop(of: [.text], isTargeted: nil) { providers in
+                            guard let provider = providers.first else { return false }
+                            _ = provider.loadObject(ofClass: String.self) { value, _ in
+                                guard let value, let id = UUID(uuidString: value) else { return }
+                                Task { @MainActor in store.perform(.move(id, before: item.id)) }
+                            }
+                            return true
+                        }
                         .id(OverlayScrollTarget.item(item.id))
                     }
                 }
@@ -256,6 +271,31 @@ public struct OverlayRootView: View {
             }
         }
         .id(OverlayPresentationScrollPolicy().scrollViewIdentity(presentationRevision: store.presentationRevision))
+    }
+
+    @ViewBuilder
+    private func itemMenu(_ item: ClipboardItem) -> some View {
+        Button(language == .english ? "View / Edit…" : "查看 / 编辑…") { store.detailItem = item }
+        Button(item.isPinned ? (language == .english ? "Unpin" : "取消收藏") : (language == .english ? "Pin" : "收藏")) { store.togglePin(item) }
+        Menu(language == .english ? "Move to group" : "移到分组") {
+            Button(language == .english ? "No group" : "无分组") { store.assign(item, group: nil) }
+            ForEach(store.groups) { group in
+                Button(group.name) { store.assign(item, group: group.id) }
+            }
+        }
+        Divider()
+        Button(language == .english ? "Paste as plain text ⇧↵" : "纯文本粘贴 ⇧↵") {
+            onPasteRequest(OverlayPasteRequest(item: item, trigger: .returnKey, plainText: true))
+        }.disabled(item.textContent.isEmpty)
+        Button(language == .english ? "Add to queue" : "加入队列") {
+            if !store.queueIDs.contains(item.id) { store.queueIDs.append(item.id) }
+        }
+        Button(language == .english ? "Select / Deselect" : "选中 / 取消多选") { store.toggleMultiple(item.id) }
+        Button(language == .english ? "Move to first" : "移到最前") {
+            if let first = store.items.first { store.perform(.move(item.id, before: first.id)) }
+        }
+        Divider()
+        Button(language == .english ? "Delete" : "删除", role: .destructive) { store.perform(.delete([item.id])) }
     }
 
     private func feedbackBanner(_ message: String) -> some View {

@@ -9,7 +9,7 @@ import Testing
     #expect(frame.minX == 0)
     #expect(frame.minY == 0)
     #expect(frame.width == 1440)
-    #expect(frame.height == 336)
+    #expect(frame.height == 388)
 }
 
 @Test func overlayRestingFrameMaintainsMinimumWidthWhenScreenIsNarrow() {

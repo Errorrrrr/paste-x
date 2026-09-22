@@ -334,6 +334,7 @@ private final class FakePasteServices: PasteCoordinatorServices {
     var writeResult = true
     var permissionTrusted = true
     var activateResult = true
+    var activationCompleted = true
     var postResult = true
     private(set) var writtenItem: ClipboardItem?
     private(set) var activatedTarget: PasteTarget?
@@ -352,6 +353,8 @@ private final class FakePasteServices: PasteCoordinatorServices {
         activatedTarget = target
         return activateResult
     }
+
+    func waitForActivation(target: PasteTarget) async -> Bool { activationCompleted }
 
     func postPasteCommand() -> Bool {
         postedPasteCommand = true
@@ -553,4 +556,14 @@ private extension Result where Success == Void, Failure == HotKeyError {
         }
         return nil
     }
+}
+
+
+@Test func pasteDoesNotSendKeysUntilTargetActuallyBecomesFrontmost() async {
+    let services = FakePasteServices()
+    services.activationCompleted = false
+    let result = await PasteCoordinator(services: services).paste(makePasteItem(), to: makeTarget())
+    #expect(result == .copiedOnly(reason: .activationFailed))
+    #expect(services.writtenItem != nil)
+    #expect(!services.postedPasteCommand)
 }

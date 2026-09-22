@@ -9,6 +9,7 @@ public enum PasteFailureReason: String, Codable, Equatable, Sendable {
     case emptyPayload
     case pasteboardWriteFailed
     case unsupportedPayload
+    case pasteInProgress
 }
 
 public enum PasteResult: Codable, Equatable, Sendable {

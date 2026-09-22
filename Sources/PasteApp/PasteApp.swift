@@ -21,7 +21,15 @@ private final class PasteAppDelegate: NSObject, NSApplicationDelegate {
     private var container: ClipboardAssistantDependencyContainer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        if ProcessInfo.processInfo.arguments.contains("--demo") {
+            let container = ClipboardAssistantDependencyContainer.demo()
+            self.container = container
+            container.overlayPresenter.updateLanguage(.simplifiedChinese)
+            container.overlayPresenter.toggle(items: container.historyStore.items, target: nil)
+            return
+        }
         let container = ClipboardAssistantDependencyContainer(
+            libraryDirectory: ClipboardAssistantDependencyContainer.defaultLibraryDirectory,
             quitHandler: {
                 NSApp.terminate(nil)
             }

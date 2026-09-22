@@ -11,10 +11,12 @@ public protocol ClipboardOverlayWindowControlling: AnyObject {
     func hideOverlay()
     func showPasteFeedback(_ message: String, hideAfter delay: TimeInterval)
     func updateLanguage(_ language: AppLanguage)
+    func showPersistentFeedback(_ message: String)
 }
 
 public extension ClipboardOverlayWindowControlling {
     func updateLanguage(_ language: AppLanguage) {}
+    func showPersistentFeedback(_ message: String) {}
 }
 
 extension OverlayWindowController: ClipboardOverlayWindowControlling {}
@@ -32,10 +34,13 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
     private let onMenuAction: (OverlayMenuAction) -> Void
     private var language: AppLanguage
     private var currentTarget: PasteTarget?
+    private var selectionStore: OverlaySelectionStore?
+    private var isPasting = false
 
     public private(set) var lastPasteResult: PasteResult?
 
     public convenience init(
+        selectionStore: OverlaySelectionStore = OverlaySelectionStore(),
         pasteCoordinator: PasteCoordinating,
         permissionPresenter: PermissionPresenting?,
         language: AppLanguage = .english,
@@ -46,6 +51,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
     ) {
         let relay = OverlayPasteRequestRelay()
         let windowController = OverlayWindowController(
+            store: selectionStore,
             language: language,
             onPasteRequested: { [relay] request in
                 relay.submit(request)
@@ -66,6 +72,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
             onMenuAction: onMenuAction
         )
 
+        self.selectionStore = selectionStore
         relay.handler = { [weak self] request in
             self?.submit(request)
         }
@@ -132,26 +139,34 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
 
     @discardableResult
     public func paste(_ request: OverlayPasteRequest) async -> PasteResult {
+        guard !isPasting else { return .failed(reason: .pasteInProgress) }
+        isPasting = true
+        selectionStore?.isPasting = true
+        defer { isPasting = false; selectionStore?.isPasting = false }
         _ = permissionPresenter?.ensureAccessibilityPermission()
+        let pasteItem = request.plainText ? request.item.replacingText(request.item.textContent) : request.item
 
         let coordinator = pasteCoordinator
-        let expectsPasteboardWrite = !request.item.payloads.isEmpty
+        let expectsPasteboardWrite = !pasteItem.payloads.isEmpty
         if expectsPasteboardWrite {
-            markSelfWrite(request.item)
+            markSelfWrite(pasteItem)
         }
 
-        let result = await coordinator.paste(request.item, to: currentTarget)
+        let result = await coordinator.paste(pasteItem, to: currentTarget)
         lastPasteResult = result
+        selectionStore?.completePaste(request, succeeded: result == .pasted)
 
         if expectsPasteboardWrite && !result.wrotePasteboard {
-            cancelSelfWrite(request.item)
+            cancelSelfWrite(pasteItem)
         }
 
         if expectsPasteboardWrite && result.wrotePasteboard {
             promoteHistoryItem(request.item)
         }
 
-        if let feedbackMessage = result.copyOnlyFeedbackMessage(language: language) {
+        if case .failed = result {
+            windowController.showPersistentFeedback(language == .english ? "Paste failed. Try again or copy the item." : "粘贴失败，请重试或复制内容。")
+        } else if let feedbackMessage = result.copyOnlyFeedbackMessage(language: language) {
             windowController.showPasteFeedback(feedbackMessage, hideAfter: Constants.copyOnlyFeedbackDuration)
         } else if result.shouldHideOverlayAfterPaste {
             windowController.hideOverlay()

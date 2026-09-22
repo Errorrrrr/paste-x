@@ -13,8 +13,14 @@ public final class SystemClipboardPayloadSource: ClipboardPayloadSource {
         pasteboard.changeCount
     }
 
+    public func sourceApplication() -> (name: String?, bundleID: String?) {
+        let app = NSWorkspace.shared.frontmostApplication
+        return (app?.localizedName, app?.bundleIdentifier)
+    }
+
     public func currentPayloads() -> [ClipboardPayload] {
-        var payloads = pasteboard.pasteboardItems?.flatMap(Self.payloads(from:)) ?? []
+        var payloads = pasteboard.pasteboardItems?.enumerated().flatMap { index, item in Self.payloads(from: item, index: index) } ?? []
+        guard payloads.reduce(0, { $0 + $1.data.count }) <= 50 * 1024 * 1024 else { return [] }
         let hasFileURL = payloads.contains { $0.typeIdentifier == PasteboardTypeIdentifier.fileURL }
 
         if !payloads.contains(where: { $0.typeIdentifier == PasteboardTypeIdentifier.png }),
@@ -34,10 +40,10 @@ public final class SystemClipboardPayloadSource: ClipboardPayloadSource {
         }
     }
 
-    private static func payloads(from item: NSPasteboardItem) -> [ClipboardPayload] {
+    private static func payloads(from item: NSPasteboardItem, index: Int) -> [ClipboardPayload] {
         item.types.compactMap { type in
             item.data(forType: type).map {
-                ClipboardPayload(typeIdentifier: type.rawValue, data: $0)
+                ClipboardPayload(typeIdentifier: type.rawValue, data: $0, itemIndex: index)
             }
         }
     }

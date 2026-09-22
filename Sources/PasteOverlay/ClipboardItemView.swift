@@ -39,12 +39,14 @@ public struct ClipboardItemView: View {
         .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 2)
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
-            ClipboardItemMouseEventBridge(onSelect: onSelect, onPaste: onPaste)
+            ClipboardItemMouseEventBridge(itemID: item.id, onSelect: onSelect, onPaste: onPaste)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .accessibilityHidden(true)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(item.kind.rawValue), \(item.summary)")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(item.kind.rawValue), \(item.displayTitle)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onSelect() }
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
 
@@ -53,7 +55,7 @@ public struct ClipboardItemView: View {
             item.kind.headerColor
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.kind.displayTitle(language: language))
+                Text(item.label.isEmpty ? item.kind.displayTitle(language: language) : item.label)
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -163,8 +165,9 @@ public struct ClipboardItemView: View {
                     )
                     .accessibilityLabel(imagePreviewAccessibilityLabel)
                 } else {
-                    FileThumbnailView()
-                        .frame(width: 82, height: 110)
+                    if let url = item.fileURLs.first {
+                        FileQuickLookThumbnail(url: url).frame(width: 128, height: 110)
+                    }
                 }
 
                 Spacer(minLength: 0)
@@ -179,7 +182,7 @@ public struct ClipboardItemView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
         case .text, .unknown:
-            Text(item.summary)
+            Text(item.displayTitle)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.primary)
                 .lineLimit(4)
@@ -193,11 +196,13 @@ public struct ClipboardItemView: View {
 
     private var footer: some View {
         HStack(alignment: .lastTextBaseline) {
-            Text(footerSummary)
+            if item.isPinned { Image(systemName: "pin.fill") }
+            Text(item.sourceAppName ?? footerSummary)
                 .lineLimit(1)
 
             Spacer(minLength: 8)
 
+            Text(item.createdAt, style: .time).font(.system(size: 10))
             Text("\(displayIndex)")
                 .monospacedDigit()
         }
@@ -302,6 +307,7 @@ extension ClipboardItemView: @preconcurrency Equatable {
 }
 
 private struct ClipboardItemMouseEventBridge: NSViewRepresentable {
+    let itemID: UUID
     let onSelect: () -> Void
     let onPaste: () -> Void
 
@@ -311,13 +317,20 @@ private struct ClipboardItemMouseEventBridge: NSViewRepresentable {
         return view
     }
 
+    static func dismantleNSView(_ nsView: ClipboardItemMouseEventView, coordinator: ()) {
+        nsView.stopDragMonitoring()
+    }
+
     func updateNSView(_ nsView: ClipboardItemMouseEventView, context: Context) {
         nsView.onSelect = onSelect
         nsView.onPaste = onPaste
+        nsView.itemID = itemID
     }
 }
 
-final class ClipboardItemMouseEventView: NSView {
+final class ClipboardItemMouseEventView: NSView, NSDraggingSource {
+    var itemID: UUID?
+    private var dragMonitor: Any?
     var onSelect: () -> Void = {}
     var onPaste: () -> Void = {}
 
@@ -334,7 +347,34 @@ final class ClipboardItemMouseEventView: NSView {
             onPaste()
         } else {
             onSelect()
+            monitorDrag(from: event)
         }
+    }
+
+    func stopDragMonitoring() {
+        if let dragMonitor { NSEvent.removeMonitor(dragMonitor) }
+        dragMonitor = nil
+    }
+
+    private func monitorDrag(from event: NSEvent) {
+        stopDragMonitoring()
+        guard let itemID else { return }
+        let start = event.locationInWindow
+        dragMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDragged, .leftMouseUp]) { [weak self] dragEvent in
+            guard let self else { return dragEvent }
+            if dragEvent.type == .leftMouseUp { self.stopDragMonitoring(); return dragEvent }
+            guard abs(dragEvent.locationInWindow.x - start.x) + abs(dragEvent.locationInWindow.y - start.y) > 5 else { return dragEvent }
+            self.stopDragMonitoring()
+            let draggingItem = NSDraggingItem(pasteboardWriter: itemID.uuidString as NSString)
+            draggingItem.setDraggingFrame(NSRect(origin: self.convert(dragEvent.locationInWindow, from: nil), size: NSSize(width: 32, height: 32)),
+                                         contents: NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil))
+            self.beginDraggingSession(with: [draggingItem], event: dragEvent, source: self)
+            return nil
+        }
+    }
+
+    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
+        .move
     }
 }
 

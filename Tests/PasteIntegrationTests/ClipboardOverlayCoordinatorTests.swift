@@ -282,3 +282,24 @@ private func makeTarget() -> PasteTarget {
         capturedAt: Date(timeIntervalSince1970: 2)
     )
 }
+
+@MainActor
+@Test func plainTextPastePreservesRichOriginalInHistory() async throws {
+    var item = makeItem(summary: "rich", signature: "text:rich")
+    item.payloads.append(ClipboardPayload(typeIdentifier: "public.rtf", data: Data("{\\rtf1 rich}".utf8)))
+    let pasteCoordinator = FakePasteCoordinator(result: .pasted)
+    var promoted: ClipboardItem?
+    var suppressed: ClipboardItem?
+    let coordinator = ClipboardOverlayCoordinator(
+        windowController: FakeOverlayWindowController(), pasteCoordinator: pasteCoordinator,
+        permissionPresenter: nil, markSelfWrite: { suppressed = $0 },
+        promoteHistoryItem: { promoted = $0 }
+    )
+    _ = await coordinator.paste(OverlayPasteRequest(item: item, trigger: .returnKey, plainText: true))
+    let actual = try #require(pasteCoordinator.requests.first?.item)
+    #expect(actual.payloads.count == 1)
+    #expect(actual.payloads.first?.typeIdentifier == "public.utf8-plain-text")
+    #expect(actual.textContent == item.textContent)
+    #expect(promoted == item)
+    #expect(suppressed?.signature == actual.signature)
+}

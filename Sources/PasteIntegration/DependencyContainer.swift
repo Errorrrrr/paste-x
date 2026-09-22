@@ -5,16 +5,20 @@ import PasteOverlay
 
 @MainActor
 public final class ClipboardAssistantDependencyContainer {
+    public static var defaultLibraryDirectory: URL { ClipboardHistoryStore.defaultDirectory }
     public let historyStore: ClipboardHistoryStore
     public let clipboardMonitor: ClipboardMonitor
     public let focusTracker: FocusTracker
     public let overlayPresenter: ClipboardOverlayCoordinator
     public let app: ClipboardAssistantApp
+    public let selectionStore: OverlaySelectionStore
+    private let ocrIndexer: ClipboardOCRIndexer
 
     private let toggleProxy: ClipboardAssistantToggleProxy
 
     public init(
-        historyCapacity: Int = 50,
+        historyCapacity: Int = 1000,
+        libraryDirectory: URL? = nil,
         monitorInterval: TimeInterval = 0.5,
         hotKeyManager: HotKeyManaging = HotKeyManager(),
         clipboardSource: ClipboardPayloadSource = SystemClipboardPayloadSource(),
@@ -29,7 +33,9 @@ public final class ClipboardAssistantDependencyContainer {
         quitHandler: (() -> Void)? = nil
     ) {
         let appSettings = appSettingsStore?.loadSettings() ?? .default
-        let historyStore = ClipboardHistoryStore(capacity: historyCapacity)
+        let historyStore = ClipboardHistoryStore(capacity: historyCapacity, directory: libraryDirectory)
+        let selectionStore = OverlaySelectionStore()
+        let ocrIndexer = ClipboardOCRIndexer(store: historyStore)
         let focusTracker = FocusTracker()
         let commandProxy = ClipboardAssistantCommandProxy(
             settingsHandler: settingsHandler,
@@ -60,7 +66,27 @@ public final class ClipboardAssistantDependencyContainer {
                 }
             }
         )
+        clipboardMonitor.settingsProvider = { [weak historyStore] in historyStore?.settings ?? ClipboardLibrarySettings() }
+        let syncLibrary: @MainActor () -> Void = { [weak historyStore, weak selectionStore, weak ocrIndexer] in
+            guard let historyStore, let selectionStore else { return }
+            selectionStore.syncLibrary(items: historyStore.items, groups: historyStore.groups,
+                                       settings: historyStore.settings, error: historyStore.storageError)
+            ocrIndexer?.indexAvailableItems()
+        }
+        selectionStore.onLibraryAction = { [weak historyStore, weak clipboardMonitor] action in
+            guard let historyStore else { return }
+            let wasPaused = historyStore.settings.capturePaused
+            historyStore.apply(action)
+            if historyStore.settings.capturePaused != wasPaused { clipboardMonitor?.resetBaseline() }
+            syncLibrary()
+        }
+        historyStore.onChange = {
+            Task { @MainActor in syncLibrary() }
+        }
+        ocrIndexer.onError = { [weak selectionStore] message in selectionStore?.showFeedback(message) }
+        syncLibrary()
         let overlayPresenter = ClipboardOverlayCoordinator(
+            selectionStore: selectionStore,
             pasteCoordinator: pasteCoordinator,
             permissionPresenter: permissionPresenter,
             language: appSettings.language,
@@ -71,7 +97,11 @@ public final class ClipboardAssistantDependencyContainer {
                 clipboardMonitor.cancelSelfWrite(signature: item.signature)
             },
             promoteHistoryItem: { [historyStore] item in
-                historyStore.insert(item)
+                if historyStore.items.contains(where: { $0.id == item.id }), let first = historyStore.items.first {
+                    historyStore.apply(.move(item.id, before: first.id))
+                } else {
+                    historyStore.insert(item)
+                }
             },
             onMenuAction: { [commandProxy] action in
                 commandProxy.handle(action)
@@ -97,6 +127,8 @@ public final class ClipboardAssistantDependencyContainer {
         commandProxy.app = app
 
         self.historyStore = historyStore
+        self.selectionStore = selectionStore
+        self.ocrIndexer = ocrIndexer
         self.clipboardMonitor = clipboardMonitor
         self.focusTracker = focusTracker
         self.overlayPresenter = overlayPresenter
@@ -111,6 +143,7 @@ public final class ClipboardAssistantDependencyContainer {
     }
 
     public func stop() {
+        ocrIndexer.stop()
         app.stop()
         focusTracker.stop()
     }

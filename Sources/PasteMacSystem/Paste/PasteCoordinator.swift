@@ -8,6 +8,11 @@ public protocol PasteCoordinatorServices: AnyObject {
     func isAccessibilityTrusted() -> Bool
     func activate(target: PasteTarget) -> Bool
     func postPasteCommand() -> Bool
+    func waitForActivation(target: PasteTarget) async -> Bool
+}
+
+public extension PasteCoordinatorServices {
+    func waitForActivation(target: PasteTarget) async -> Bool { true }
 }
 
 public final class PasteCoordinator: PasteCoordinating {
@@ -38,6 +43,10 @@ public final class PasteCoordinator: PasteCoordinating {
             return .copiedOnly(reason: .activationFailed)
         }
 
+        guard await services.waitForActivation(target: target) else {
+            return .copiedOnly(reason: .activationFailed)
+        }
+
         guard services.postPasteCommand() else {
             return .copiedOnly(reason: .eventPostFailed)
         }
@@ -54,18 +63,18 @@ public final class SystemPasteCoordinatorServices: PasteCoordinatorServices {
     }
 
     public func writeToPasteboard(_ item: ClipboardItem) -> Bool {
-        let pasteboardItem = NSPasteboardItem()
-        var wroteAnyPayload = false
-
-        for payload in item.payloads {
-            guard !payload.data.isEmpty else { continue }
-            pasteboardItem.setData(payload.data, forType: NSPasteboard.PasteboardType(payload.typeIdentifier))
-            wroteAnyPayload = true
+        let objects = Dictionary(grouping: item.payloads, by: \.itemIndex).sorted { $0.key < $1.key }.compactMap { _, formats -> NSPasteboardItem? in
+            let object = NSPasteboardItem()
+            var hasData = false
+            for payload in formats where !payload.data.isEmpty {
+                guard object.setData(payload.data, forType: NSPasteboard.PasteboardType(payload.typeIdentifier)) else { return nil }
+                hasData = true
+            }
+            return hasData ? object : nil
         }
-
-        guard wroteAnyPayload else { return false }
+        guard !objects.isEmpty, objects.count == Set(item.payloads.map(\.itemIndex)).count else { return false }
         pasteboard.clearContents()
-        return pasteboard.writeObjects([pasteboardItem])
+        return pasteboard.writeObjects(objects)
     }
 
     public func isAccessibilityTrusted() -> Bool {
@@ -74,6 +83,18 @@ public final class SystemPasteCoordinatorServices: PasteCoordinatorServices {
 
     public func activate(target: PasteTarget) -> Bool {
         NSRunningApplication(processIdentifier: target.processIdentifier)?.activate() ?? false
+    }
+
+    public func waitForActivation(target: PasteTarget) async -> Bool {
+        // activate() only accepts the request; the app may not own the keyboard yet.
+        for _ in 0..<25 {
+            if await MainActor.run(body: { NSWorkspace.shared.frontmostApplication?.processIdentifier == target.processIdentifier }) {
+                return true
+            }
+            do { try await Task.sleep(for: .milliseconds(20)) }
+            catch { return false }
+        }
+        return false
     }
 
     public func postPasteCommand() -> Bool {

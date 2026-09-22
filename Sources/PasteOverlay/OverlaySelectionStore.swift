@@ -11,10 +11,14 @@ public enum OverlayPasteTrigger: String, Codable, Equatable, Sendable {
 public struct OverlayPasteRequest: Equatable, Sendable {
     public let item: ClipboardItem
     public let trigger: OverlayPasteTrigger
+    public let plainText: Bool
+    public let fromQueue: Bool
 
-    public init(item: ClipboardItem, trigger: OverlayPasteTrigger) {
+    public init(item: ClipboardItem, trigger: OverlayPasteTrigger, plainText: Bool = false, fromQueue: Bool = false) {
         self.item = item
         self.trigger = trigger
+        self.plainText = plainText
+        self.fromQueue = fromQueue
     }
 }
 
@@ -80,6 +84,22 @@ public final class OverlaySelectionStore: ObservableObject {
     @Published public private(set) var searchQuery = ""
     @Published public private(set) var isSearching = false
     @Published public private(set) var presentationRevision = 0
+    @Published public var groups: [ClipboardGroup] = []
+    @Published public var librarySettings = ClipboardLibrarySettings()
+    @Published public var storageError: String?
+    @Published public var kindFilter: ClipboardKind? { didSet { normalizeSelectionForVisibleItems() } }
+    @Published public var sourceFilter = "" { didSet { normalizeSelectionForVisibleItems() } }
+    @Published public var ageFilterDays = 0 { didSet { normalizeSelectionForVisibleItems() } }
+    @Published public var pinnedOnly = false { didSet { normalizeSelectionForVisibleItems() } }
+    @Published public var groupFilter: UUID? { didSet { normalizeSelectionForVisibleItems() } }
+    @Published public var selectedIDs: Set<UUID> = []
+    @Published public var queueIDs: [UUID] = []
+    @Published public var detailItem: ClipboardItem?
+    @Published public var showsLibrarySettings = false
+    @Published public var showsGroupCreation = false
+    public var isShowingDialog: Bool { detailItem != nil || showsLibrarySettings || showsGroupCreation }
+    @Published public var isPasting = false
+    public var onLibraryAction: (ClipboardLibraryAction) -> Void = { _ in }
     public private(set) var lastSelectionSource: OverlaySelectionSource = .automatic
 
     public var selectedItem: ClipboardItem? {
@@ -87,20 +107,61 @@ public final class OverlaySelectionStore: ObservableObject {
             return nil
         }
 
-        return items.first { $0.id == selectedItemID }
+        return visibleItems.first { $0.id == selectedItemID }
     }
 
     public var visibleItems: [ClipboardItem] {
         let query = normalizedSearchQuery
-        guard !query.isEmpty else {
-            return items
-        }
-
         return items.filter { item in
-            item.summary.localizedCaseInsensitiveContains(query)
+            (query.isEmpty || item.searchText.localizedCaseInsensitiveContains(query)
                 || item.kind.rawValue.localizedCaseInsensitiveContains(query)
-                || item.kind.searchDisplayName.localizedCaseInsensitiveContains(query)
+                || item.kind.searchDisplayName.localizedCaseInsensitiveContains(query))
+            && (kindFilter == nil || kindFilter == item.kind)
+            && (sourceFilter.isEmpty || item.sourceBundleID == sourceFilter)
+            && (ageFilterDays == 0 || item.createdAt >= Date().addingTimeInterval(-Double(ageFilterDays) * 86400))
+            && (!pinnedOnly || item.isPinned)
+            && (groupFilter == nil || item.groupID == groupFilter)
         }
+    }
+
+    public func syncLibrary(items: [ClipboardItem], groups: [ClipboardGroup], settings: ClipboardLibrarySettings, error: String?) {
+        self.items = items; self.groups = groups; self.librarySettings = settings; self.storageError = error
+        let ids = Set(items.map(\.id))
+        selectedIDs.formIntersection(ids)
+        queueIDs.removeAll { !ids.contains($0) }
+        if let groupFilter, !groups.contains(where: { $0.id == groupFilter }) { self.groupFilter = nil }
+        normalizeSelectionForVisibleItems()
+    }
+
+    public func perform(_ action: ClipboardLibraryAction) { onLibraryAction(action) }
+    public func togglePin(_ item: ClipboardItem) { var copy = item; copy.isPinned.toggle(); perform(.update(copy)) }
+    public func assign(_ item: ClipboardItem, group: UUID?) { var copy = item; copy.groupID = group; perform(.update(copy)) }
+    public func toggleMultiple(_ id: UUID) {
+        if selectedIDs.contains(id) { selectedIDs.remove(id) } else { selectedIDs.insert(id) }
+    }
+    public func enqueueSelection() {
+        let targets = selectedIDs.isEmpty ? [selectedItemID].compactMap { $0 } : visibleItems.filter { selectedIDs.contains($0.id) }.map(\.id)
+        for id in targets where !queueIDs.contains(id) { queueIDs.append(id) }
+    }
+    public func queueRequest() -> OverlayPasteRequest? {
+        guard let id = queueIDs.first, let item = items.first(where: { $0.id == id }), !isPasting else { return nil }
+        return OverlayPasteRequest(item: item, trigger: .returnKey, fromQueue: true)
+    }
+    public func completePaste(_ request: OverlayPasteRequest, succeeded: Bool) {
+        isPasting = false
+        if request.fromQueue && succeeded { queueIDs.removeAll { $0 == request.item.id } }
+    }
+    public func mergedRequest() -> OverlayPasteRequest? {
+        let selected = visibleItems.filter { selectedIDs.contains($0.id) }
+        guard !selected.isEmpty, selected.allSatisfy({ !$0.textContent.isEmpty }) else { return nil }
+        let text = selected.map(\.textContent).joined(separator: "\n")
+        let payloads = [ClipboardPayload(typeIdentifier: "public.utf8-plain-text", data: Data(text.utf8))]
+        let item = ClipboardItem(kind: .text, summary: String(text.prefix(120)), createdAt: Date(), signature: ClipboardSignature.make(kind: .text, payloads: payloads), payloads: payloads)
+        return OverlayPasteRequest(item: item, trigger: .returnKey)
+    }
+    public func resetFilters() {
+        kindFilter = nil; sourceFilter = ""; ageFilterDays = 0; pinnedOnly = false; groupFilter = nil
+        normalizeSelectionForVisibleItems()
     }
 
     public init(items: [ClipboardItem] = []) {
@@ -113,7 +174,7 @@ public final class OverlaySelectionStore: ObservableObject {
         feedbackMessage = nil
         clearSearch()
         items = newItems
-        selectedItemID = newItems.first?.id
+        selectedItemID = visibleItems.first?.id
         presentationRevision += 1
     }
 

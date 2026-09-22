@@ -6,7 +6,11 @@ public enum ClipboardSignature {
         var signatureInput = Data()
         append(kind.rawValue, to: &signatureInput)
 
-        for payload in payloads.sorted(by: { $0.typeIdentifier < $1.typeIdentifier }) {
+        let hasMultipleItems = payloads.contains { $0.itemIndex != 0 }
+        for payload in payloads.sorted(by: {
+            $0.itemIndex == $1.itemIndex ? $0.typeIdentifier < $1.typeIdentifier : $0.itemIndex < $1.itemIndex
+        }) {
+            if hasMultipleItems { append(String(payload.itemIndex), to: &signatureInput) }
             append(payload.typeIdentifier, to: &signatureInput)
             signatureInput.append(payload.data)
             signatureInput.append(0)

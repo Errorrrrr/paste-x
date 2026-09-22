@@ -62,6 +62,7 @@ public final class ClipboardAssistantApp {
     }
 
     public func toggleOverlay() {
+        (historyStore as? ClipboardHistoryStore)?.expireItems()
         let target = refreshedPasteTarget()
         overlayPresenter.toggle(items: historyStore.items, target: target)
     }

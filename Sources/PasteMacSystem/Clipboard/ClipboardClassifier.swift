@@ -33,7 +33,8 @@ public final class ClipboardClassifier: ClipboardClassifying {
             summary: summary,
             createdAt: createdAt,
             signature: signature,
-            payloads: payloads
+            payloads: payloads,
+            extractedText: richText(in: payloads)
         )
     }
 
@@ -54,7 +55,7 @@ public final class ClipboardClassifier: ClipboardClassifying {
             return .url
         }
 
-        if firstText(in: payloads) != nil {
+        if firstText(in: payloads) != nil || !richText(in: payloads).isEmpty {
             return .text
         }
 
@@ -64,7 +65,7 @@ public final class ClipboardClassifier: ClipboardClassifying {
     private func makeSummary(for kind: ClipboardKind, payloads: [ClipboardPayload]) -> String {
         switch kind {
         case .text:
-            return clippedSummary(firstText(in: payloads) ?? "Text", fallback: "Text")
+            return clippedSummary(firstText(in: payloads) ?? richText(in: payloads), fallback: "Text")
         case .url:
             return clippedSummary(firstURLString(in: payloads) ?? firstText(in: payloads) ?? "URL", fallback: "URL")
         case .file:
@@ -74,6 +75,14 @@ public final class ClipboardClassifier: ClipboardClassifying {
         case .unknown:
             return "Unsupported clipboard data"
         }
+    }
+
+    private func richText(in payloads: [ClipboardPayload]) -> String {
+        payloads.compactMap { payload -> String? in
+            if payload.typeIdentifier == "public.rtf" { return NSAttributedString(rtf: payload.data, documentAttributes: nil)?.string }
+            if payload.typeIdentifier == "com.apple.flat-rtfd" { return NSAttributedString(rtfd: payload.data, documentAttributes: nil)?.string }
+            return nil
+        }.joined(separator: "\n")
     }
 
     private func firstText(in payloads: [ClipboardPayload]) -> String? {
