@@ -16,7 +16,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-15-arm64
+    runs-on: macos-15
     steps:
       - name: Resolve tag
         id: version
