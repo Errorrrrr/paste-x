@@ -70,6 +70,14 @@
 - 错误增加失败文件、字段路径或系统错误代码。右键错误文字可复制完整信息；历史与隐私设置中的错误也可选择复制。
 - 120 项全量测试通过。用户确认另一台电脑是覆盖安装，但尚未取得该机器的完整错误或旧清单结构；已验证的兼容路径不等于已确认该机器根因。
 
+## 旧版清单格式迁移（2026-09-23）
+
+- 本机实际旧库使用 `itemIDs / pinboards / preferences` 清单及 `<UUID>.json` 记录；1.1.1 只识别 `order / files / groups / settings`，因此报“历史库读取失败”。
+- 新读取路径只在旧清单完整可读且收藏板为空时迁移。旧版历史条目、来源应用和可对应的隐私设置进入新格式；旧版纯文本粘贴及批量分隔符设置保留在备份清单中，当前设置页没有对应项。
+- 提交新清单前保存原清单为 `manifest.legacy-v1.json`；旧版记录文件不删除。若有旧收藏板、缺失记录或损坏数据，继续停止写入。
+- 在本机 61 条、约 59 MB 的旧库副本上直接运行迁移，重启后仍为 61 条，新增后为 62 条；全部 61 个旧记录文件逐字节未变。原始历史库未修改。
+- 当前 Command Line Tools 的 SwiftPM 与 SDK 不匹配，`swift test` 在编译包清单时链接失败；核心及历史库模块已用匹配的 macOS 26.5 SDK 直接编译，迁移回归用例待正常 SwiftPM 工具链重跑。
+
 ## 复验命令
 
     CLANG_MODULE_CACHE_PATH=/tmp/pastex-clang-cache swift test --disable-sandbox --scratch-path /tmp/pastex-improve-build

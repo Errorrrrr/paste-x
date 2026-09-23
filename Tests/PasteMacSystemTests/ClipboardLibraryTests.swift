@@ -95,6 +95,64 @@ private func clip(_ text: String, at date: Date = Date(), pinned: Bool = false) 
     #expect(ClipboardHistoryStore(directory: folder).items.count == 2)
 }
 
+@Test func legacyLibraryMigratesWithoutRemovingOriginalRecords() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    var item = clip("legacy history", pinned: true)
+    item.sourceBundleID = "example.source"
+    let record = folder.appendingPathComponent("\(item.id.uuidString).json")
+    var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(item)) as? [String: Any])
+    object["sourceBundleIdentifier"] = object.removeValue(forKey: "sourceBundleID")
+    try JSONSerialization.data(withJSONObject: object).write(to: record)
+    let manifestURL = folder.appendingPathComponent("manifest.json")
+    let legacyManifest: [String: Any] = [
+        "version": 1, "itemIDs": [item.id.uuidString], "pinboards": [],
+        "preferences": ["historyLimit": 87, "retentionDays": 0,
+                        "excludedBundleIdentifiers": ["example.private"], "isPaused": true,
+                        "pasteAsPlainText": true, "batchSeparator": "\n"]
+    ]
+    let originalManifest = try JSONSerialization.data(withJSONObject: legacyManifest)
+    try originalManifest.write(to: manifestURL)
+
+    let migrated = ClipboardHistoryStore(directory: folder)
+    #expect(migrated.storageError == nil)
+    #expect(migrated.items.count == 1)
+    #expect(migrated.items.first?.sourceBundleID == "example.source")
+    #expect(migrated.settings.historyLimit == 87)
+    #expect(migrated.settings.retentionDays == 0)
+    #expect(migrated.settings.excludedBundleIDs == ["example.private"])
+    #expect(migrated.settings.capturePaused)
+    #expect(try Data(contentsOf: folder.appendingPathComponent("manifest.legacy-v1.json")) == originalManifest)
+    #expect(FileManager.default.fileExists(atPath: record.path))
+
+    migrated.insert(clip("new history"))
+    let restored = ClipboardHistoryStore(directory: folder)
+    #expect(restored.storageError == nil)
+    #expect(restored.items.count == 2)
+    #expect(restored.items.last?.sourceBundleID == "example.source")
+    #expect(FileManager.default.fileExists(atPath: record.path))
+}
+
+@Test func legacyPinboardsStayReadOnlyUntilSupported() throws {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let manifestURL = folder.appendingPathComponent("manifest.json")
+    let original = try JSONSerialization.data(withJSONObject: [
+        "version": 1, "itemIDs": [], "pinboards": [["id": UUID().uuidString]],
+        "preferences": ["historyLimit": 100, "retentionDays": 30,
+                        "excludedBundleIdentifiers": [], "isPaused": false,
+                        "pasteAsPlainText": false, "batchSeparator": "\n"]
+    ] as [String: Any])
+    try original.write(to: manifestURL)
+    let store = ClipboardHistoryStore(directory: folder)
+    store.insert(clip("do not overwrite"))
+    #expect(store.storageError?.contains("旧版收藏板") == true)
+    #expect(try Data(contentsOf: manifestURL) == original)
+    #expect(store.items.isEmpty)
+}
+
 @Test func invalidSettingsRemainReadOnlyWithActionableDiagnostic() throws {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: folder) }

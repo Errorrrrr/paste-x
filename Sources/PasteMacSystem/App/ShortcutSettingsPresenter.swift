@@ -19,7 +19,7 @@ public protocol ShortcutSettingsPresenting: AnyObject {
 public final class ShortcutSettingsPresenter: ShortcutSettingsPresenting {
     private var windowController: NSWindowController?
 
-    public init() {}
+    nonisolated public init() {}
 
     public func openSettings(
         currentShortcut: HotKeyShortcut,

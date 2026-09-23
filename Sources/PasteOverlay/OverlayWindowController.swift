@@ -27,12 +27,13 @@ public final class OverlayWindowController: NSObject {
     private var hostingView: NSHostingView<OverlayRootView>?
 
     public init(
-        store: OverlaySelectionStore = OverlaySelectionStore(),
+        store: OverlaySelectionStore? = nil,
         language: AppLanguage = .english,
         onPasteRequested: @escaping (OverlayPasteRequest) -> Void = { _ in },
         onMenuAction: @escaping (OverlayMenuAction) -> Void = { _ in },
         onDismiss: @escaping () -> Void = {}
     ) {
+        let store = store ?? OverlaySelectionStore()
         self.store = store
         self.language = language
         self.onPasteRequested = onPasteRequested

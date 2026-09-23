@@ -40,7 +40,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
     public private(set) var lastPasteResult: PasteResult?
 
     public convenience init(
-        selectionStore: OverlaySelectionStore = OverlaySelectionStore(),
+        selectionStore: OverlaySelectionStore? = nil,
         pasteCoordinator: PasteCoordinating,
         permissionPresenter: PermissionPresenting?,
         language: AppLanguage = .english,
@@ -49,6 +49,7 @@ public final class ClipboardOverlayCoordinator: OverlayPresenting {
         promoteHistoryItem: @escaping (ClipboardItem) -> Void = { _ in },
         onMenuAction: @escaping (OverlayMenuAction) -> Void = { _ in }
     ) {
+        let selectionStore = selectionStore ?? OverlaySelectionStore()
         let relay = OverlayPasteRequestRelay()
         let windowController = OverlayWindowController(
             store: selectionStore,

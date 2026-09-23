@@ -11,6 +11,7 @@ public final class ClipboardHistoryStore: ClipboardHistoryProviding {
     private let directory: URL?
     private var loadFailed = false
     private var itemFiles: [UUID: String] = [:]
+    private var legacyManifestData: Data?
     private let now: () -> Date
 
     private struct Manifest: Codable {
@@ -19,6 +20,50 @@ public final class ClipboardHistoryStore: ClipboardHistoryProviding {
         var files: [UUID: String]
         var groups: [ClipboardGroup]
         var settings: ClipboardLibrarySettings
+    }
+
+    private struct LegacyManifest: Decodable {
+        let version: Int
+        let itemIDs: [UUID]
+        let pinboards: [IgnoredLegacyValue]
+        let preferences: LegacyPreferences
+    }
+
+    private struct IgnoredLegacyValue: Decodable {
+        init(from decoder: Decoder) throws {}
+    }
+
+    private struct LegacyPreferences: Decodable {
+        let historyLimit: Int
+        let retentionDays: Int
+        let excludedBundleIdentifiers: [String]
+        let isPaused: Bool
+        let pasteAsPlainText: Bool
+        let batchSeparator: String
+    }
+
+    private struct LegacyItem: Decodable {
+        let id: UUID
+        let kind: ClipboardKind
+        let summary: String
+        let createdAt: Date
+        let signature: String
+        let payloads: [ClipboardPayload]
+        let sourceAppName: String?
+        let sourceBundleIdentifier: String?
+
+        var item: ClipboardItem {
+            ClipboardItem(id: id, kind: kind, summary: summary, createdAt: createdAt,
+                          signature: signature, payloads: payloads,
+                          sourceAppName: sourceAppName, sourceBundleID: sourceBundleIdentifier)
+        }
+    }
+
+    private enum LegacyMigrationError: LocalizedError {
+        case unsupportedPinboards
+        var errorDescription: String? {
+            "旧版收藏板暂不支持自动迁移，原文件已保留。 / Legacy pinboards need manual migration."
+        }
     }
 
     public static var defaultDirectory: URL {
@@ -32,7 +77,11 @@ public final class ClipboardHistoryStore: ClipboardHistoryProviding {
         settings.historyLimit = max(0, capacity)
         if directory == nil { settings.retentionDays = 0 }
         load()
-        if !loadFailed { let loaded = items; prune(); persist(previousItems: loaded) }
+        if !loadFailed {
+            let loaded = items
+            prune()
+            if !persist(previousItems: loaded), legacyManifestData != nil { loadFailed = true }
+        }
     }
 
     public func insert(_ incoming: ClipboardItem) {
@@ -129,7 +178,38 @@ public final class ClipboardHistoryStore: ClipboardHistoryProviding {
         }
         var readingFile = "manifest.json"
         do {
-            let manifest = try JSONDecoder().decode(Manifest.self, from: Data(contentsOf: url))
+            let data = try Data(contentsOf: url)
+            let manifest: Manifest
+            do {
+                manifest = try JSONDecoder().decode(Manifest.self, from: data)
+            } catch {
+                let modernError = error
+                guard let legacy = try? JSONDecoder().decode(LegacyManifest.self, from: data) else { throw modernError }
+                guard legacy.version == 1, Set(legacy.itemIDs).count == legacy.itemIDs.count else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                guard legacy.pinboards.isEmpty else { throw LegacyMigrationError.unsupportedPinboards }
+                var loadedItems: [ClipboardItem] = []
+                var files: [UUID: String] = [:]
+                for id in legacy.itemIDs {
+                    let file = "\(id.uuidString).json"
+                    readingFile = file
+                    let item = try JSONDecoder().decode(LegacyItem.self, from: Data(contentsOf: directory.appendingPathComponent(file))).item
+                    guard item.id == id else { throw CocoaError(.fileReadCorruptFile) }
+                    loadedItems.append(item)
+                    files[id] = file
+                }
+                var migratedSettings = ClipboardLibrarySettings()
+                migratedSettings.historyLimit = legacy.preferences.historyLimit
+                migratedSettings.retentionDays = legacy.preferences.retentionDays
+                migratedSettings.excludedBundleIDs = legacy.preferences.excludedBundleIdentifiers
+                migratedSettings.capturePaused = legacy.preferences.isPaused
+                items = loadedItems
+                settings = migratedSettings
+                itemFiles = files
+                legacyManifestData = data
+                return
+            }
             guard manifest.version == 1, Set(manifest.order).count == manifest.order.count else { throw CocoaError(.fileReadCorruptFile) }
             var loadedItems: [ClipboardItem] = []
             for id in manifest.order {
@@ -185,6 +265,15 @@ public final class ClipboardHistoryStore: ClipboardHistoryProviding {
         var written: [URL] = []
         do {
             try fm.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            if let legacyManifestData {
+                let backup = directory.appendingPathComponent("manifest.legacy-v1.json")
+                if fm.fileExists(atPath: backup.path) {
+                    guard try Data(contentsOf: backup) == legacyManifestData else { throw CocoaError(.fileWriteFileExists) }
+                } else {
+                    try legacyManifestData.write(to: backup, options: .atomic)
+                    try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+                }
+            }
             let previous = Dictionary(uniqueKeysWithValues: previousItems.map { ($0.id, $0) })
             for item in items where previous[item.id] != item || newFiles[item.id] == nil {
                 let name = "\(item.id.uuidString)-\(UUID().uuidString).json"
@@ -199,7 +288,8 @@ public final class ClipboardHistoryStore: ClipboardHistoryProviding {
             try JSONEncoder().encode(manifest).write(to: directory.appendingPathComponent("manifest.json"), options: .atomic)
             let obsolete = Set(itemFiles.values).subtracting(newFiles.values)
             itemFiles = newFiles
-            for name in obsolete { try? fm.removeItem(at: directory.appendingPathComponent(name)) }
+            legacyManifestData = nil
+            for name in obsolete where Self.isRecordFile(name) { try? fm.removeItem(at: directory.appendingPathComponent(name)) }
             if let files = try? fm.contentsOfDirectory(atPath: directory.path) {
                 let active = Set(newFiles.values)
                 for name in files where !active.contains(name) && Self.isRecordFile(name) {

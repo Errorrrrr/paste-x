@@ -2,6 +2,8 @@
 
 This repo ships a SwiftPM executable product named `PasteX` and a local macOS app bundle script.
 
+If the installed Command Line Tools cannot link the SwiftPM package manifest, use `SDK_PATH=<matching macOS SDK> ./scripts/build-macos-direct-qa.sh`. This fallback compiles the same targets directly and produces only an ad-hoc signed QA app and ZIP; it does not sign or notarize a public distribution build.
+
 ## Build
 
 ```bash
