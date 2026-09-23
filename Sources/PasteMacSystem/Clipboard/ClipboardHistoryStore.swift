@@ -190,14 +190,12 @@ public final class ClipboardHistoryStore: ClipboardHistoryProviding {
                 }
                 guard legacy.pinboards.isEmpty else { throw LegacyMigrationError.unsupportedPinboards }
                 var loadedItems: [ClipboardItem] = []
-                var files: [UUID: String] = [:]
                 for id in legacy.itemIDs {
                     let file = "\(id.uuidString).json"
                     readingFile = file
                     let item = try JSONDecoder().decode(LegacyItem.self, from: Data(contentsOf: directory.appendingPathComponent(file))).item
                     guard item.id == id else { throw CocoaError(.fileReadCorruptFile) }
                     loadedItems.append(item)
-                    files[id] = file
                 }
                 var migratedSettings = ClipboardLibrarySettings()
                 migratedSettings.historyLimit = legacy.preferences.historyLimit
@@ -206,7 +204,8 @@ public final class ClipboardHistoryStore: ClipboardHistoryProviding {
                 migratedSettings.capturePaused = legacy.preferences.isPaused
                 items = loadedItems
                 settings = migratedSettings
-                itemFiles = files
+                // Leave itemFiles empty so persist writes current-format records.
+                // Reusing legacy files would lose renamed fields on the next load.
                 legacyManifestData = data
                 return
             }
