@@ -9,7 +9,7 @@ DIST_DIR="${DIST_DIR:-$ROOT_DIR/dist}"
 SCRATCH_DIR="$(mktemp -d /tmp/pastex-direct-build-XXXXXX)"
 trap 'rm -rf "$SCRATCH_DIR"' EXIT
 
-compiler=(swiftc -sdk "$SDK_PATH" -target "$ARCH-apple-macosx14.0" -swift-version 5 -O)
+compiler=(swiftc -sdk "$SDK_PATH" -target "$ARCH-apple-macosx14.0" -swift-version 6 -O)
 export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$SCRATCH_DIR/clang-cache}"
 
 compile_module() {
