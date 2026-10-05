@@ -14,6 +14,7 @@ public final class ClipboardAssistantApp {
     private let shortcutStore: ShortcutSettingsStoring?
     private let settingsStore: AppSettingsStoring?
     private let launchAtLoginManager: LaunchAtLoginManaging?
+    private let updatePresenter: AppUpdatePresenting?
     private var shortcut: HotKeyShortcut
     private var settings: AppSettings
 
@@ -28,6 +29,7 @@ public final class ClipboardAssistantApp {
         shortcutStore: ShortcutSettingsStoring? = nil,
         settingsStore: AppSettingsStoring? = nil,
         launchAtLoginManager: LaunchAtLoginManaging? = nil,
+        updatePresenter: AppUpdatePresenting? = nil,
         shortcut: HotKeyShortcut = .defaultToggleOverlay,
         settings: AppSettings = .default
     ) {
@@ -41,6 +43,7 @@ public final class ClipboardAssistantApp {
         self.shortcutStore = shortcutStore
         self.settingsStore = settingsStore
         self.launchAtLoginManager = launchAtLoginManager
+        self.updatePresenter = updatePresenter
         self.shortcut = shortcut
         self.settings = settings
         apply(settings: settings)
@@ -59,6 +62,7 @@ public final class ClipboardAssistantApp {
         clipboardMonitor.stop()
         statusItemController.uninstall()
         overlayPresenter.hide()
+        updatePresenter?.close()
     }
 
     public func toggleOverlay() {
@@ -96,6 +100,11 @@ public final class ClipboardAssistantApp {
 
     public func closeOverlay() {
         overlayPresenter.hide()
+    }
+
+    public func checkForUpdates() {
+        overlayPresenter.hide()
+        updatePresenter?.checkForUpdates(language: settings.language)
     }
 
     @discardableResult

@@ -29,6 +29,7 @@ public final class ClipboardAssistantDependencyContainer {
         shortcutStore: ShortcutSettingsStoring? = UserDefaultsShortcutSettingsStore(),
         appSettingsStore: AppSettingsStoring? = UserDefaultsAppSettingsStore(),
         launchAtLoginManager: LaunchAtLoginManaging? = SMAppServiceLaunchAtLoginManager(),
+        updatePresenter: AppUpdatePresenting? = AppUpdatePresenter(),
         settingsHandler: (() -> Void)? = nil,
         quitHandler: (() -> Void)? = nil
     ) {
@@ -50,6 +51,9 @@ public final class ClipboardAssistantDependencyContainer {
             },
             settingsHandler: canOpenSettings ? {
                 commandProxy.openSettings()
+            } : nil,
+            updateCheckHandler: updatePresenter != nil ? {
+                commandProxy.checkForUpdates()
             } : nil,
             quitHandler: quitHandler != nil ? {
                 commandProxy.quit()
@@ -119,6 +123,7 @@ public final class ClipboardAssistantDependencyContainer {
             shortcutStore: shortcutStore,
             settingsStore: appSettingsStore,
             launchAtLoginManager: launchAtLoginManager,
+            updatePresenter: updatePresenter,
             shortcut: shortcut,
             settings: appSettings
         )
@@ -191,6 +196,10 @@ private final class ClipboardAssistantCommandProxy {
 
     func quit() {
         quitHandler?()
+    }
+
+    func checkForUpdates() {
+        app?.checkForUpdates()
     }
 
     func closeOverlay() {

@@ -14,9 +14,15 @@ on:
 permissions:
   contents: write
 
+# Serialize all tags so an older build cannot race a newer release for latest.
+concurrency:
+  group: release-qa
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - name: Resolve tag
         id: version
@@ -43,35 +49,72 @@ jobs:
         run: |
           actual=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Resources/Info.plist)
           [[ "$actual" == "$VERSION" ]] || { echo "Tag/version mismatch" >&2; exit 1; }
-          test -f "docs/release/v$VERSION.md"
+          build=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' Resources/Info.plist)
+          [[ "$build" == "$VERSION" ]] || { echo "Tag/build version mismatch" >&2; exit 1; }
+          test -s "docs/release/v$VERSION.md"
 
-      - name: Test legacy migration and read-only guards
-        run: swift test --disable-sandbox --filter 'legacyLibraryMigratesWithoutRemovingOriginalRecords|legacyPinboardsStayReadOnlyUntilSupported|olderSettingsWithoutNewFieldsPreserveHistoryAndExistingPreferences|corruptManifestIsPreservedAndBlocksWrites'
+      - name: Test update detection and all regressions
+        run: swift test --disable-sandbox
 
       - name: Build QA package
         run: SIGNING_MODE=qa ./scripts/build-macos.sh
 
-      - name: Prepare release asset and notes
+      - name: Verify package and prepare release assets
         id: asset
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          asset="dist/PasteX-$VERSION-macos-arm64-qa-only.zip"
+          asset_name="PasteX-$VERSION-macos-arm64-qa-only.zip"
+          asset="dist/$asset_name"
+          test -s dist/PasteX-macos-arm64-qa-only.zip
           cp dist/PasteX-macos-arm64-qa-only.zip "$asset"
+          unzip -t "$asset"
+          verify_dir=$(mktemp -d "$RUNNER_TEMP/pastex-package.XXXXXX")
+          ditto -x -k "$asset" "$verify_dir"
+          app="$verify_dir/PasteX.app"
+          actual=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
+          [[ "$actual" == "$VERSION" ]] || { echo "Packaged version mismatch" >&2; exit 1; }
+          [[ "$(lipo -archs "$app/Contents/MacOS/PasteX")" == arm64 ]] || { echo "Packaged architecture mismatch" >&2; exit 1; }
+          codesign --verify --deep --strict "$app"
+          (cd dist && shasum -a 256 "$asset_name" > "$asset_name.sha256")
           sha=$(shasum -a 256 "$asset" | awk '{print $1}')
           cp "docs/release/v$VERSION.md" "$RUNNER_TEMP/release-notes.md"
           printf '\n构建提交：`%s`。\n\n安装包 SHA-256：`%s`。\n' "$(git rev-parse HEAD)" "$sha" >> "$RUNNER_TEMP/release-notes.md"
           echo "path=$asset" >> "$GITHUB_OUTPUT"
+          echo "checksum=$asset.sha256" >> "$GITHUB_OUTPUT"
 
-      - name: Publish GitHub Release
+      - name: Upload, verify, and publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.version.outputs.tag }}
           ASSET: ${{ steps.asset.outputs.path }}
+          CHECKSUM: ${{ steps.asset.outputs.checksum }}
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "$ASSET" --clobber
-            gh release edit "$TAG" --title "PasteX $TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
-          else
-            gh release create "$TAG" "$ASSET" --title "PasteX $TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --verify-tag
+          # Keep a new release private until both uploaded assets are verified.
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --title "PasteX $TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --verify-tag
           fi
+          gh release upload "$TAG" "$ASSET" "$CHECKSUM" --clobber
+          download_dir=$(mktemp -d "$RUNNER_TEMP/pastex-release.XXXXXX")
+          gh release download "$TAG" --pattern "$(basename "$ASSET")" --pattern "$(basename "$CHECKSUM")" --dir "$download_dir"
+          cmp "$CHECKSUM" "$download_dir/$(basename "$CHECKSUM")"
+          (cd "$download_dir" && shasum -a 256 -c "$(basename "$CHECKSUM")")
+
+          # Explicitly keep an older tag rerun from becoming the newest update.
+          gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' > "$RUNNER_TEMP/published-tags.txt"
+          make_latest=$(python3 - "$TAG" "$RUNNER_TEMP/published-tags.txt" <<'PY'
+          import pathlib
+          import re
+          import sys
+
+          def version(tag):
+              match = re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", tag)
+              return tuple(map(int, match.groups())) if match else None
+
+          target = version(sys.argv[1])
+          published = [version(tag) for tag in pathlib.Path(sys.argv[2]).read_text().splitlines()]
+          print("false" if any(v is not None and v > target for v in published) else "true")
+          PY
+          )
+          gh release edit "$TAG" --draft=false --prerelease=false --latest="$make_latest" --title "PasteX $TAG" --notes-file "$RUNNER_TEMP/release-notes.md"

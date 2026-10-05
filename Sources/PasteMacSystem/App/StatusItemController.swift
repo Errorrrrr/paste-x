@@ -32,6 +32,7 @@ struct HotKeyRegistrationNotice: Equatable, Sendable {
 enum StatusItemMenuAction: Equatable, Sendable {
     case toggleOverlay
     case openSettings
+    case checkForUpdates
     case quit
 }
 
@@ -85,6 +86,7 @@ struct StatusItemMenuModel: Equatable, Sendable {
         hotKeyNotice: HotKeyRegistrationNotice?,
         includesSettings: Bool,
         includesQuit: Bool,
+        includesUpdateCheck: Bool = false,
         language: AppLanguage = .english
     ) -> StatusItemMenuModel {
         let strings = StatusItemStrings(language: language)
@@ -110,7 +112,7 @@ struct StatusItemMenuModel: Equatable, Sendable {
             )
         )
 
-        if includesSettings || includesQuit {
+        if includesSettings || includesQuit || includesUpdateCheck {
             items.append(.separator)
         }
 
@@ -120,6 +122,17 @@ struct StatusItemMenuModel: Equatable, Sendable {
                     title: strings.settings,
                     action: .openSettings,
                     keyEquivalent: ",",
+                    isEnabled: true
+                )
+            )
+        }
+
+        if includesUpdateCheck {
+            items.append(
+                StatusItemMenuItemDescriptor(
+                    title: strings.checkForUpdates,
+                    action: .checkForUpdates,
+                    keyEquivalent: "",
                     isEnabled: true
                 )
             )
@@ -144,6 +157,7 @@ struct StatusItemMenuModel: Equatable, Sendable {
 public final class StatusItemController: NSObject {
     private let toggleHandler: () -> Void
     private let settingsHandler: (() -> Void)?
+    private let updateCheckHandler: (() -> Void)?
     private let quitHandler: (() -> Void)?
     private var language: AppLanguage
     private var statusItem: NSStatusItem?
@@ -157,11 +171,13 @@ public final class StatusItemController: NSObject {
         language: AppLanguage = .english,
         toggleHandler: @escaping () -> Void,
         settingsHandler: (() -> Void)? = nil,
+        updateCheckHandler: (() -> Void)? = nil,
         quitHandler: (() -> Void)? = nil
     ) {
         self.language = language
         self.toggleHandler = toggleHandler
         self.settingsHandler = settingsHandler
+        self.updateCheckHandler = updateCheckHandler
         self.quitHandler = quitHandler
         super.init()
     }
@@ -251,6 +267,10 @@ public final class StatusItemController: NSObject {
         quitHandler?()
     }
 
+    @objc private func didChooseCheckForUpdates() {
+        updateCheckHandler?()
+    }
+
     private var currentClickEvent: StatusItemClickEvent? {
         guard let event = NSApp.currentEvent else { return nil }
         return StatusItemClickEvent(
@@ -268,6 +288,7 @@ public final class StatusItemController: NSObject {
             hotKeyNotice: hotKeyNotice,
             includesSettings: settingsHandler != nil,
             includesQuit: quitHandler != nil,
+            includesUpdateCheck: updateCheckHandler != nil,
             language: language
         )
 
@@ -354,6 +375,8 @@ public final class StatusItemController: NSObject {
             return #selector(didChooseToggleOverlay)
         case .openSettings:
             return #selector(didChooseSettings)
+        case .checkForUpdates:
+            return #selector(didChooseCheckForUpdates)
         case .quit:
             return #selector(didChooseQuit)
         case nil:
@@ -479,6 +502,10 @@ private struct StatusItemStrings {
 
     var quit: String {
         language == .english ? "Quit PasteX" : "退出 PasteX"
+    }
+
+    var checkForUpdates: String {
+        language == .english ? "Check for Updates…" : "检查更新…"
     }
 
     func shortcutUnavailable(reason: String) -> String {
