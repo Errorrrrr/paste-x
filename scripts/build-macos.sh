@@ -6,7 +6,9 @@ APP_NAME="${APP_NAME:-PasteX}"
 PRODUCT_NAME="${PRODUCT_NAME:-PasteX}"
 CONFIGURATION="${CONFIGURATION:-release}"
 ARCH="${ARCH:-arm64}"
-SIGNING_MODE="${SIGNING_MODE:-qa}"
+# Public packages use ad-hoc signing by default; Developer ID distribution remains
+# available through release mode, while qa keeps its legacy local-test naming.
+SIGNING_MODE="${SIGNING_MODE:-adhoc}"
 DIST_DIR="${DIST_DIR:-$ROOT_DIR/dist}"
 INFO_PLIST="$ROOT_DIR/Resources/Info.plist"
 ENTITLEMENTS="$ROOT_DIR/Resources/Paste.entitlements"
@@ -17,18 +19,33 @@ case "$SIGNING_MODE" in
     qa)
         ZIP_PATH="$DIST_DIR/$APP_NAME-macos-$ARCH-qa-only.zip"
         ;;
-    release)
+    adhoc|release)
         ZIP_PATH="$DIST_DIR/$APP_NAME-macos-$ARCH.zip"
         ;;
     *)
-        echo "SIGNING_MODE must be either 'qa' or 'release'." >&2
+        echo "SIGNING_MODE must be 'adhoc', 'qa', or 'release'." >&2
         exit 1
         ;;
 esac
 
 identity="${CODESIGN_IDENTITY:-}"
 notary_profile="${NOTARY_KEYCHAIN_PROFILE:-${NOTARY_PROFILE:-}}"
-release_succeeded=0
+package_succeeded=0
+
+if [[ "$SIGNING_MODE" == "adhoc" ]]; then
+    if [[ "${SKIP_CODESIGN:-0}" == "1" ]]; then
+        echo "Ad-hoc distribution builds require codesigning; unset SKIP_CODESIGN or use SIGNING_MODE=qa for local testing." >&2
+        exit 1
+    fi
+    if ! command -v codesign >/dev/null 2>&1; then
+        echo "Ad-hoc distribution builds require codesign." >&2
+        exit 1
+    fi
+    if ! command -v ditto >/dev/null 2>&1; then
+        echo "Ad-hoc distribution builds require ditto to create the distribution zip." >&2
+        exit 1
+    fi
+fi
 
 if [[ "$SIGNING_MODE" == "release" ]]; then
     if [[ "${SKIP_CODESIGN:-0}" == "1" ]]; then
@@ -61,14 +78,14 @@ if [[ "$SIGNING_MODE" == "release" ]]; then
     fi
 fi
 
-cleanup_release_artifacts() {
-    if [[ "$SIGNING_MODE" == "release" && "$release_succeeded" != "1" ]]; then
+cleanup_distribution_artifacts() {
+    if [[ "$SIGNING_MODE" != "qa" && "$package_succeeded" != "1" ]]; then
         rm -f "$ZIP_PATH"
     fi
 }
 
-if [[ "$SIGNING_MODE" == "release" ]]; then
-    trap cleanup_release_artifacts EXIT
+if [[ "$SIGNING_MODE" != "qa" ]]; then
+    trap cleanup_distribution_artifacts EXIT
 fi
 
 cd "$ROOT_DIR"
@@ -109,9 +126,9 @@ echo "Signing mode: $SIGNING_MODE"
 if [[ "${SKIP_CODESIGN:-0}" == "1" ]]; then
     echo "Skipping codesign; generated package is QA-only and not for distribution." >&2
 elif command -v codesign >/dev/null 2>&1; then
-    if [[ "$SIGNING_MODE" == "release" ]]; then
-        identity="$identity"
-    else
+    if [[ "$SIGNING_MODE" == "adhoc" ]]; then
+        identity="-"
+    elif [[ "$SIGNING_MODE" == "qa" ]]; then
         identity="${CODESIGN_IDENTITY:--}"
     fi
 
@@ -122,8 +139,8 @@ elif command -v codesign >/dev/null 2>&1; then
     codesign "${codesign_args[@]}" "$APP_BUNDLE"
     codesign --verify --deep --strict "$APP_BUNDLE"
 else
-    if [[ "$SIGNING_MODE" == "release" ]]; then
-        echo "Release builds require codesign." >&2
+    if [[ "$SIGNING_MODE" != "qa" ]]; then
+        echo "Distribution builds require codesign." >&2
         exit 1
     fi
     echo "codesign not found; generated package is QA-only and not for distribution." >&2
@@ -138,10 +155,10 @@ if [[ "$SIGNING_MODE" == "release" ]]; then
     create_zip "$ZIP_PATH"
     echo "Submitting release package for notarization with profile: $notary_profile"
     xcrun notarytool submit "$ZIP_PATH" --keychain-profile "$notary_profile" --wait
-    release_succeeded=1
 elif command -v ditto >/dev/null 2>&1; then
     create_zip "$ZIP_PATH"
 fi
+package_succeeded=1
 
 echo "App bundle: $APP_BUNDLE"
 if [[ -f "$ZIP_PATH" ]]; then

@@ -1,4 +1,4 @@
-name: Release QA
+name: Release
 
 on:
   push:
@@ -16,7 +16,7 @@ permissions:
 
 # Serialize all tags so an older build cannot race a newer release for latest.
 concurrency:
-  group: release-qa
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -56,18 +56,18 @@ jobs:
       - name: Test update detection and all regressions
         run: ./scripts/test-macos-ci.sh
 
-      - name: Build QA package
-        run: SIGNING_MODE=qa ./scripts/build-macos.sh
+      - name: Build release package
+        run: SIGNING_MODE=adhoc ./scripts/build-macos.sh
 
       - name: Verify package and prepare release assets
         id: asset
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          asset_name="PasteX-$VERSION-macos-arm64-qa-only.zip"
+          asset_name="PasteX-$VERSION-macos-arm64.zip"
           asset="dist/$asset_name"
-          test -s dist/PasteX-macos-arm64-qa-only.zip
-          cp dist/PasteX-macos-arm64-qa-only.zip "$asset"
+          test -s dist/PasteX-macos-arm64.zip
+          cp dist/PasteX-macos-arm64.zip "$asset"
           unzip -t "$asset"
           verify_dir=$(mktemp -d "$RUNNER_TEMP/pastex-package.XXXXXX")
           ditto -x -k "$asset" "$verify_dir"

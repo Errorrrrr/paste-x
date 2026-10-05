@@ -2,7 +2,7 @@
 
 This repo ships a SwiftPM executable product named `PasteX` and a local macOS app bundle script.
 
-If the installed Command Line Tools cannot link the SwiftPM package manifest, use `SDK_PATH=<matching macOS SDK> ./scripts/build-macos-direct-qa.sh`. This fallback compiles the same targets directly and produces only an ad-hoc signed QA app and ZIP; it does not sign or notarize a public distribution build.
+If the installed Command Line Tools cannot link the SwiftPM package manifest, use `SDK_PATH=<matching macOS SDK> ./scripts/build-macos-direct-qa.sh` for local testing. This fallback compiles the same targets directly and produces an ad-hoc signed app and a ZIP with the legacy `-qa-only` suffix. Use the GitHub Actions workflow below for published versions.
 
 ## Build
 
@@ -13,11 +13,11 @@ If the installed Command Line Tools cannot link the SwiftPM package manifest, us
 Default output:
 
 - `dist/PasteX.app`
-- `dist/PasteX-macos-arm64-qa-only.zip`
+- `dist/PasteX-macos-arm64.zip`
 
 The script builds the `PasteX` executable in release mode for `arm64`, copies `Resources/Info.plist` and `Resources/PasteXAppIcon.icns` into the app bundle, signs the app, verifies the signature, and zips the bundle with `ditto`.
 
-By default `SIGNING_MODE=qa`, which uses ad-hoc signing unless `CODESIGN_IDENTITY` is explicitly provided. QA mode always writes a `*-qa-only.zip` artifact so it is not confused with a distributable macOS release. That package is for local QA and internal handoff only; it is not a Gatekeeper/notarized external release artifact. The QA build also removes older `*-qa-only*.zip` files from `dist/` before writing the new package so the handoff directory keeps only the latest test package.
+By default `SIGNING_MODE=adhoc`, which signs the app with an ad-hoc signature and produces the standard package name. GitHub Actions uses this mode for stable releases. `SIGNING_MODE=qa` remains available for local testing and produces a `*-qa-only.zip` artifact; it also removes older `*-qa-only*.zip` files from `dist/` before writing the new test package. Signing mode controls signing requirements; the GitHub release channel is stable.
 
 `Resources/Paste.entitlements` is intentionally empty for MVP non-sandboxed distribution. Clipboard reads and synthesized paste events are guarded by macOS TCC Accessibility consent, not by a sandbox entitlement. If the app later targets the Mac App Store, sandbox behavior needs a separate validation pass because CGEvent-based auto-paste may be constrained.
 
@@ -25,12 +25,13 @@ Useful overrides:
 
 ```bash
 ARCH=arm64 CONFIGURATION=release ./scripts/build-macos.sh
+SIGNING_MODE=adhoc ./scripts/build-macos.sh
 SIGNING_MODE=qa CODESIGN_IDENTITY="Apple Development: Example Team (TEAMID)" ./scripts/build-macos.sh
 SIGNING_MODE=release CODESIGN_IDENTITY="Developer ID Application: Example Team (TEAMID)" NOTARY_KEYCHAIN_PROFILE="paste-notary" ./scripts/build-macos.sh
-SKIP_CODESIGN=1 ./scripts/build-macos.sh
+SIGNING_MODE=qa SKIP_CODESIGN=1 ./scripts/build-macos.sh
 ```
 
-`SIGNING_MODE=release` fails unless `CODESIGN_IDENTITY` is set to a Developer ID Application identity and `NOTARY_KEYCHAIN_PROFILE` is set. Release mode signs with hardened runtime, creates one ZIP, and submits that same ZIP with `notarytool`; it does not rebuild the ZIP after approval. The delivered archive therefore relies on Apple's online notarization check on first launch rather than containing a stapled ticket for offline verification. If either signing or notarization credentials are unavailable, use the default QA mode and hand off only the `*-qa-only.zip` artifact.
+`SIGNING_MODE=release` is the Developer ID signing and notarization mode. It fails unless `CODESIGN_IDENTITY` is set to a Developer ID Application identity and `NOTARY_KEYCHAIN_PROFILE` is set. This mode signs with hardened runtime, creates one ZIP, and submits that same ZIP with `notarytool`; it does not rebuild the ZIP after approval. The delivered archive therefore relies on Apple's online notarization check on first launch rather than containing a stapled ticket for offline verification. When these credentials are unavailable, use the default `adhoc` mode.
 
 ```bash
 SIGNING_MODE=release CODESIGN_IDENTITY="Developer ID Application: Example Team (TEAMID)" NOTARY_KEYCHAIN_PROFILE="paste-notary" ./scripts/build-macos.sh
@@ -71,7 +72,7 @@ Manual settings path: System Settings -> Privacy & Security -> Accessibility -> 
 
 右键或 Control-click 菜单栏图标，选择“检查更新…”（英文界面为 `Check for Updates…`）。独立窗口会显示检查进度和结果，并提供重新检查入口。应用读取 GitHub 最新稳定发布，比较版本号，并检查该版本是否包含适用的安装包。检查结果会说明已是最新版本、发现新版本或暂时无法检查；发现新版本后，点击“下载更新”可打开对应 GitHub 发布页。
 
-当前提供 Apple Silicon 的 `PasteX-<版本>-macos-arm64-qa-only.zip`，更新检测不会自动下载、安装或替换应用。下载后退出 PasteX，用新版应用覆盖旧版，保留历史目录。QA 包采用 ad-hoc 签名，未经 Developer ID 签名或公证。
+当前正式稳定版提供 Apple Silicon 的 `PasteX-<版本>-macos-arm64.zip`。更新检测兼容该名称及历史 `-qa-only.zip` 名称，不会自动下载、安装或替换应用。下载后退出 PasteX，用新版应用覆盖旧版，保留历史目录。
 
 main 分支提交和 Pull Request 会先运行 macOS CI 全量测试。CI 和发布使用同一个 `scripts/test-macos-ci.sh` 入口，测试失败时保留非零退出状态并把关键错误写入 GitHub 检查注释，便于定位。已推送的失败版本标签保留；修复后递增版本并发布新标签。
 
@@ -79,31 +80,31 @@ main 分支提交和 Pull Request 会先运行 macOS CI 全量测试。CI 和发
 
 ## 通过 GitHub Actions 发布
 
-工作流为 `.github/workflows/release-qa.yml`（Actions 中名为 `Release QA`）。发布前，将 `Resources/Info.plist` 的 `CFBundleShortVersionString` 与 `CFBundleVersion` 更新到相同版本，并写入 `docs/release/v<版本>.md`。工作流要求稳定版本标签为 `v主版本.次版本.补丁版本`，例如 `v1.1.4`。
+工作流为 `.github/workflows/release.yml`（Actions 中名为 `Release`），发布正式稳定版。发布前，将 `Resources/Info.plist` 的 `CFBundleShortVersionString` 与 `CFBundleVersion` 更新到相同版本，并写入 `docs/release/v<版本>.md`。工作流要求稳定版本标签为 `v主版本.次版本.补丁版本`，例如 `v1.1.5`。
 
 提交代码后推送版本标签即可触发构建：
 
 ```bash
-git tag v1.1.4
-git push origin v1.1.4
+git tag v1.1.5
+git push origin v1.1.5
 ```
 
-也可以在 Actions → Release QA → Run workflow 中填写已存在的版本标签。工作流检出标签指向的提交，并检查标签、应用版本与发布说明是否一致。不要将已有标签移动到另一提交；修复代码后应使用新版本号和新标签。
+也可以在 Actions → Release → Run workflow 中填写已存在的版本标签。工作流检出标签指向的提交，并检查标签、应用版本与发布说明是否一致。不要将已有标签移动到另一提交；修复代码后应使用新版本号和新标签。
 
 工作流会依次完成：
 
 1. 运行完整 `swift test --disable-sandbox`，涵盖更新检测和既有回归用例。
-2. 使用 `SIGNING_MODE=qa` 构建 arm64 安装包，检查 ZIP 完整性、包内版本、架构和签名。
-3. 生成 `PasteX-<版本>-macos-arm64-qa-only.zip` 及同名 `.zip.sha256` 校验文件，发布说明附上构建提交与 SHA-256。
+2. 使用 `SIGNING_MODE=adhoc` 构建 arm64 安装包，检查 ZIP 完整性、包内版本、架构和签名。
+3. 生成 `PasteX-<版本>-macos-arm64.zip` 及同名 `.zip.sha256` 校验文件，发布说明附上构建提交与 SHA-256。
 4. 创建草稿发布，上传两个资产，重新下载并核验 SHA-256，成功后公开。失败的新发布保持草稿，不会被客户端当作可用更新。
 5. 仅将版本号不低于所有已公开稳定版本的发布设为 latest，避免重跑旧标签让客户端回退到旧版本。不同标签的发布串行执行。
 
-工作流使用仓库提供的 `GITHUB_TOKEN` 和 `contents: write` 权限，无需额外发布密钥。当前没有配置 Developer ID 证书或公证凭据，因此 Actions 发布的仍是明确标记 `qa-only` 的 QA 安装包。
+工作流使用仓库提供的 `GITHUB_TOKEN` 和 `contents: write` 权限，无需额外发布密钥。当前正式稳定版采用 ad-hoc 签名，未经 Developer ID 签名或公证；首次打开时可能需要在 macOS“隐私与安全性”中允许打开。
 
 同一标签失败后可重跑，工作流会复用草稿并重新上传资产。对已经公开的标签重跑会替换同名安装包和校验文件，但不会覆盖更高版本的 latest 标记；通常应通过新版本发布后续修复。
 
 安装包下载到同一目录后，可在终端核验：
 
 ```bash
-shasum -a 256 -c PasteX-1.1.4-macos-arm64-qa-only.zip.sha256
+shasum -a 256 -c PasteX-1.1.5-macos-arm64.zip.sha256
 ```
