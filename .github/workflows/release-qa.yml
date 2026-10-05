@@ -54,7 +54,7 @@ jobs:
           test -s "docs/release/v$VERSION.md"
 
       - name: Test update detection and all regressions
-        run: swift test --disable-sandbox
+        run: ./scripts/test-macos-ci.sh
 
       - name: Build QA package
         run: SIGNING_MODE=qa ./scripts/build-macos.sh
