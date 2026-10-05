@@ -9,10 +9,17 @@ import PasteCore
 @Test func openingAndClosingEveryDialogKeepsOverlayAtScreenBottom() async throws {
     let store = OverlaySelectionStore(items: OverlayMockData.items())
     let controller = OverlayWindowController(store: store)
-    controller.show(items: store.items)
+    let screen = try #require(NSScreen.main)
+    let expectedFrame = OverlayPanelGeometry.restingFrame(in: screen.frame)
+    controller.show(items: store.items, on: screen)
     defer { controller.hideOverlay() }
-    // Allow the normal entrance animation to complete before measuring its settled frame.
-    try await Task.sleep(for: .milliseconds(300))
+    // Animation completion can be delayed on a busy runner; require the settled frame.
+    let clock = ContinuousClock()
+    let deadline = clock.now.advanced(by: .seconds(5))
+    while controller.overlayFrame != expectedFrame, clock.now < deadline {
+        try await Task.sleep(for: .milliseconds(20))
+    }
+    try #require(controller.overlayFrame == expectedFrame)
     let initial = try #require(controller.overlayFrame)
 
     store.showsLibrarySettings = true

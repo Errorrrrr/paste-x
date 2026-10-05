@@ -73,17 +73,19 @@ Manual settings path: System Settings -> Privacy & Security -> Accessibility -> 
 
 当前提供 Apple Silicon 的 `PasteX-<版本>-macos-arm64-qa-only.zip`，更新检测不会自动下载、安装或替换应用。下载后退出 PasteX，用新版应用覆盖旧版，保留历史目录。QA 包采用 ad-hoc 签名，未经 Developer ID 签名或公证。
 
+main 分支提交和 Pull Request 会先运行 macOS CI 全量测试。CI 和发布使用同一个 `scripts/test-macos-ci.sh` 入口，测试失败时保留非零退出状态并把关键错误写入 GitHub 检查注释，便于定位。已推送的失败版本标签保留；修复后递增版本并发布新标签。
+
 发布前手动检查：当前版本无更新时能显示明确结果；网络不可用时显示失败且可以再次检查；有更高版本且带适用 ZIP 时能打开对应 GitHub 发布页；检查进行中不会发起重复请求。
 
 ## 通过 GitHub Actions 发布
 
-工作流为 `.github/workflows/release-qa.yml`（Actions 中名为 `Release QA`）。发布前，将 `Resources/Info.plist` 的 `CFBundleShortVersionString` 与 `CFBundleVersion` 更新到相同版本，并写入 `docs/release/v<版本>.md`。工作流要求稳定版本标签为 `v主版本.次版本.补丁版本`，例如 `v1.1.3`。
+工作流为 `.github/workflows/release-qa.yml`（Actions 中名为 `Release QA`）。发布前，将 `Resources/Info.plist` 的 `CFBundleShortVersionString` 与 `CFBundleVersion` 更新到相同版本，并写入 `docs/release/v<版本>.md`。工作流要求稳定版本标签为 `v主版本.次版本.补丁版本`，例如 `v1.1.4`。
 
 提交代码后推送版本标签即可触发构建：
 
 ```bash
-git tag v1.1.3
-git push origin v1.1.3
+git tag v1.1.4
+git push origin v1.1.4
 ```
 
 也可以在 Actions → Release QA → Run workflow 中填写已存在的版本标签。工作流检出标签指向的提交，并检查标签、应用版本与发布说明是否一致。不要将已有标签移动到另一提交；修复代码后应使用新版本号和新标签。
@@ -103,5 +105,5 @@ git push origin v1.1.3
 安装包下载到同一目录后，可在终端核验：
 
 ```bash
-shasum -a 256 -c PasteX-1.1.3-macos-arm64-qa-only.zip.sha256
+shasum -a 256 -c PasteX-1.1.4-macos-arm64-qa-only.zip.sha256
 ```
