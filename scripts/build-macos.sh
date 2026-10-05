@@ -14,6 +14,7 @@ INFO_PLIST="$ROOT_DIR/Resources/Info.plist"
 ENTITLEMENTS="$ROOT_DIR/Resources/Paste.entitlements"
 APP_ICON="$ROOT_DIR/Resources/PasteXAppIcon.icns"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
+DMG_PATH="$DIST_DIR/$APP_NAME-macos-$ARCH.dmg"
 
 case "$SIGNING_MODE" in
     qa)
@@ -80,7 +81,7 @@ fi
 
 cleanup_distribution_artifacts() {
     if [[ "$SIGNING_MODE" != "qa" && "$package_succeeded" != "1" ]]; then
-        rm -f "$ZIP_PATH"
+        rm -f "$ZIP_PATH" "$DMG_PATH"
     fi
 }
 
@@ -115,6 +116,9 @@ if [[ "$SIGNING_MODE" == "qa" ]]; then
     find "$DIST_DIR" -maxdepth 1 -type f -name "*-macos-$ARCH-qa-only*.zip" -delete
 fi
 rm -rf "$APP_BUNDLE" "$ZIP_PATH" "$DIST_DIR/Paste.app"
+if [[ "$SIGNING_MODE" != "qa" ]]; then
+    rm -f "$DMG_PATH"
+fi
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 cp "$INFO_PLIST" "$APP_BUNDLE/Contents/Info.plist"
 cp "$APP_ICON" "$APP_BUNDLE/Contents/Resources/$(basename "$APP_ICON")"
@@ -158,9 +162,15 @@ if [[ "$SIGNING_MODE" == "release" ]]; then
 elif command -v ditto >/dev/null 2>&1; then
     create_zip "$ZIP_PATH"
 fi
+if [[ "$SIGNING_MODE" != "qa" ]]; then
+    "$ROOT_DIR/scripts/package-macos-dmg.sh" "$APP_BUNDLE" "$DMG_PATH"
+fi
 package_succeeded=1
 
 echo "App bundle: $APP_BUNDLE"
 if [[ -f "$ZIP_PATH" ]]; then
     echo "Zip package: $ZIP_PATH"
+fi
+if [[ "$SIGNING_MODE" != "qa" ]]; then
+    echo "DMG installer: $DMG_PATH"
 fi

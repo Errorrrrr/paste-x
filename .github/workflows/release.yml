@@ -64,42 +64,64 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          asset_name="PasteX-$VERSION-macos-arm64.zip"
-          asset="dist/$asset_name"
+          installer_name="PasteX-$VERSION-macos-arm64.dmg"
+          archive_name="PasteX-$VERSION-macos-arm64.zip"
+          installer="dist/$installer_name"
+          archive="dist/$archive_name"
+          test -s dist/PasteX-macos-arm64.dmg
           test -s dist/PasteX-macos-arm64.zip
-          cp dist/PasteX-macos-arm64.zip "$asset"
-          unzip -t "$asset"
+          cp dist/PasteX-macos-arm64.dmg "$installer"
+          cp dist/PasteX-macos-arm64.zip "$archive"
+          hdiutil verify "$installer"
+          unzip -t "$archive"
           verify_dir=$(mktemp -d "$RUNNER_TEMP/pastex-package.XXXXXX")
-          ditto -x -k "$asset" "$verify_dir"
-          app="$verify_dir/PasteX.app"
-          actual=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
-          [[ "$actual" == "$VERSION" ]] || { echo "Packaged version mismatch" >&2; exit 1; }
-          [[ "$(lipo -archs "$app/Contents/MacOS/PasteX")" == arm64 ]] || { echo "Packaged architecture mismatch" >&2; exit 1; }
-          codesign --verify --deep --strict "$app"
-          (cd dist && shasum -a 256 "$asset_name" > "$asset_name.sha256")
-          sha=$(shasum -a 256 "$asset" | awk '{print $1}')
+          ditto -x -k "$archive" "$verify_dir"
+          mount_dir=$(mktemp -d "$RUNNER_TEMP/pastex-installer.XXXXXX")
+          cleanup_mount() { hdiutil detach "$mount_dir" >/dev/null 2>&1 || true; }
+          trap cleanup_mount EXIT
+          hdiutil attach "$installer" -readonly -nobrowse -noautoopen -mountpoint "$mount_dir"
+          [[ -L "$mount_dir/Applications" && "$(readlink "$mount_dir/Applications")" == /Applications ]]
+          test -s "$mount_dir/安装说明.txt"
+          for app in "$verify_dir/PasteX.app" "$mount_dir/PasteX.app"; do
+            actual=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
+            [[ "$actual" == "$VERSION" ]] || { echo "Packaged version mismatch" >&2; exit 1; }
+            [[ "$(lipo -archs "$app/Contents/MacOS/PasteX")" == arm64 ]] || { echo "Packaged architecture mismatch" >&2; exit 1; }
+            codesign --verify --deep --strict "$app"
+          done
+          cmp "$verify_dir/PasteX.app/Contents/MacOS/PasteX" "$mount_dir/PasteX.app/Contents/MacOS/PasteX"
+          hdiutil detach "$mount_dir"
+          trap - EXIT
+          (cd dist && shasum -a 256 "$installer_name" > "$installer_name.sha256")
+          (cd dist && shasum -a 256 "$archive_name" > "$archive_name.sha256")
+          installer_sha=$(shasum -a 256 "$installer" | awk '{print $1}')
+          archive_sha=$(shasum -a 256 "$archive" | awk '{print $1}')
           cp "docs/release/v$VERSION.md" "$RUNNER_TEMP/release-notes.md"
-          printf '\n构建提交：`%s`。\n\n安装包 SHA-256：`%s`。\n' "$(git rev-parse HEAD)" "$sha" >> "$RUNNER_TEMP/release-notes.md"
-          echo "path=$asset" >> "$GITHUB_OUTPUT"
-          echo "checksum=$asset.sha256" >> "$GITHUB_OUTPUT"
+          printf '\n构建提交：`%s`。\n\nDMG SHA-256：`%s`。\n\n兼容 ZIP SHA-256：`%s`。\n' "$(git rev-parse HEAD)" "$installer_sha" "$archive_sha" >> "$RUNNER_TEMP/release-notes.md"
+          echo "installer=$installer" >> "$GITHUB_OUTPUT"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
 
       - name: Upload, verify, and publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ steps.version.outputs.tag }}
-          ASSET: ${{ steps.asset.outputs.path }}
-          CHECKSUM: ${{ steps.asset.outputs.checksum }}
+          DMG: ${{ steps.asset.outputs.installer }}
+          ZIP: ${{ steps.asset.outputs.archive }}
         run: |
-          # Keep a new release private until both uploaded assets are verified.
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
+          # Publish only after the DMG and the legacy-client ZIP are both verified.
+          if is_draft=$(gh release view "$TAG" --json isDraft --jq '.isDraft' 2>/dev/null); then
+            [[ "$is_draft" == true ]] || { echo "Release $TAG is already public. Publish changes with a new version tag." >&2; exit 1; }
+          else
             gh release create "$TAG" --draft --title "PasteX $TAG" --notes-file "$RUNNER_TEMP/release-notes.md" --verify-tag
           fi
-          gh release upload "$TAG" "$ASSET" "$CHECKSUM" --clobber
+          gh release upload "$TAG" "$DMG" "$DMG.sha256" "$ZIP" "$ZIP.sha256" --clobber
           download_dir=$(mktemp -d "$RUNNER_TEMP/pastex-release.XXXXXX")
-          gh release download "$TAG" --pattern "$(basename "$ASSET")" --pattern "$(basename "$CHECKSUM")" --dir "$download_dir"
-          cmp "$CHECKSUM" "$download_dir/$(basename "$CHECKSUM")"
-          (cd "$download_dir" && shasum -a 256 -c "$(basename "$CHECKSUM")")
+          gh release download "$TAG" --pattern "$(basename "$DMG")" --pattern "$(basename "$DMG").sha256" --pattern "$(basename "$ZIP")" --pattern "$(basename "$ZIP").sha256" --dir "$download_dir"
+          for package in "$DMG" "$ZIP"; do
+            checksum="$package.sha256"
+            cmp "$checksum" "$download_dir/$(basename "$checksum")"
+            (cd "$download_dir" && shasum -a 256 -c "$(basename "$checksum")")
+          done
 
           # Explicitly keep an older tag rerun from becoming the newest update.
           gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' > "$RUNNER_TEMP/published-tags.txt"

@@ -115,6 +115,7 @@ public struct AppUpdateChecker: Sendable {
         let architectures = [architecture, "universal"]
         let names = architectures.flatMap { architecture in
             [
+                "PasteX-\(version)-macos-\(architecture).dmg",
                 "PasteX-\(version)-macos-\(architecture).zip",
                 "PasteX-\(version)-macos-\(architecture)-qa-only.zip"
             ]

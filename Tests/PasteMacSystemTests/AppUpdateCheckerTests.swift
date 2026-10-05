@@ -97,8 +97,47 @@ func updateCheckerDoesNotOfferSameVersionOrDowngrade(_ current: String) async th
     }
 }
 
-@Test(arguments: ["PasteX-1.2.0-macos-arm64-qa-only.zip", "PasteX-1.2.0-macos-universal.zip"])
-func updateCheckerAcceptsPublishedQAAndUniversalPackages(_ name: String) async throws {
+@Test(arguments: ["arm64", "x86_64"])
+func updateCheckerAcceptsDMGOnlyReleaseForNativeAndUniversalArchitectures(_ architecture: String) async throws {
+    for packageArchitecture in [architecture, "universal"] {
+        let data = try releaseData(assets: [asset(name: "PasteX-1.2.0-macos-\(packageArchitecture).dmg")])
+        let result = try await checker(data: data, architecture: architecture).check(currentVersion: "1.1.5")
+
+        #expect(result == .updateAvailable(AppUpdate(
+            version: "1.2.0",
+            releaseURL: URL(string: "https://github.com/Errorrrrr/paste-x/releases/tag/v1.2.0")!
+        )))
+    }
+}
+
+@Test func updateCheckerRejectsUnreadyIncompatibleOrUntrustedDMGs() async throws {
+    let name = "PasteX-1.2.0-macos-arm64.dmg"
+    let assets = [
+        asset(name: "PasteX-1.2.0-macos-x86_64.dmg"),
+        asset(name: "PasteX-1.1.9-macos-arm64.dmg"),
+        asset(name: name, state: "new"),
+        asset(name: name, size: 0),
+        asset(name: name, downloadURL: "https://example.com/\(name)"),
+        asset(name: name, downloadURL: "http://github.com/Errorrrrr/paste-x/releases/download/v1.2.0/\(name)"),
+        asset(name: name, downloadURL: "https://github.com/another/repo/releases/download/v1.2.0/\(name)"),
+        asset(name: name, downloadURL: "https://github.com/Errorrrrr/paste-x/releases/download/v1.1.9/\(name)"),
+        asset(name: name, downloadURL: "https://github.com/Errorrrrr/paste-x/releases/download/v1.2.0/\(name)?redirect=example.com")
+    ]
+    for asset in assets {
+        let data = try releaseData(assets: [asset])
+        await #expect(throws: AppUpdateError.releaseNotReady) {
+            try await checker(data: data).check(currentVersion: "1.1.5")
+        }
+    }
+}
+
+@Test(arguments: [
+    "PasteX-1.2.0-macos-arm64.zip",
+    "PasteX-1.2.0-macos-arm64-qa-only.zip",
+    "PasteX-1.2.0-macos-universal.zip",
+    "PasteX-1.2.0-macos-universal-qa-only.zip"
+])
+func updateCheckerRetainsPublishedZIPAndLegacyQACompatibility(_ name: String) async throws {
     let result = try await checker(data: releaseData(assets: [asset(name: name)])).check(currentVersion: "1.1.2")
     guard case .updateAvailable = result else {
         Issue.record("Expected a compatible published package to be available")
@@ -153,8 +192,8 @@ func updateCheckerRejectsUntrustedReleaseURLs(_ url: String) async throws {
     }
 }
 
-private func checker(data: Data, status: Int = 200) -> AppUpdateChecker {
-    AppUpdateChecker(architecture: "arm64") { _ in try response(data: data, status: status) }
+private func checker(data: Data, status: Int = 200, architecture: String = "arm64") -> AppUpdateChecker {
+    AppUpdateChecker(architecture: architecture) { _ in try response(data: data, status: status) }
 }
 
 private func response(data: Data, status: Int = 200) throws -> (Data, HTTPURLResponse) {
